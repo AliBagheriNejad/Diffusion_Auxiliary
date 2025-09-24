@@ -1,0 +1,5 @@
+Data/*
+*.ipynb
+temp/*
+diffusion base code.txt
+*.pth
