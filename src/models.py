@@ -95,7 +95,9 @@ class FeatureExtractor(nn.Module):
 
         self.conv5 = nn.Conv1d(128, 256, kernel_size=2)
         self.bn5 = nn.BatchNorm1d(256)
-        # self.dropout5 = nn.Dropout(drop)
+        self.dropout5 = nn.Dropout(drop)
+
+        self.bnf = nn.BatchNorm1d(1024)
 
     def forward(self, x):
         x = self.pool1(self.dropout1(F.relu(self.bn1(self.conv1(x)))))
@@ -106,6 +108,7 @@ class FeatureExtractor(nn.Module):
 
 
         x = torch.flatten(x, 1)
+        x = self.bnf(x)
         return x
 
 class Classifier(BaseModel):
@@ -142,21 +145,16 @@ class Network(BaseModel):
         self.feature_extractor = FeatureExtractor(input_channels=in_channels)
         self.classifier = Classifier(num_classes)
 
-    def forward(self, x, latent_in=True):
+    def forward(self, x):
         if self.in_ch == 1:
             x = x.view(x.shape[0], 1, x.shape[1])  # Reshape input to (batch_size, channels, length)
         else:
             x = x.view(x.shape[0], x.shape[2], x.shape[1])
         features = self.feature_extractor(x)
-        x, latent = self.classifier(features)
-        if latent_in:
-            embed = torch.concat([features.reshape(x.shape[0], -1), latent.reshape(x.shape[0], -1)], dim=1)
-        else:
-            embed = features.reshape(x.shape[0], -1)
+        x = self.classifier(features)
 
-        return x, embed
+        return x
     
-
 class AuxNet(BaseModel):
 
     def __init__(
@@ -193,36 +191,7 @@ class AuxNet(BaseModel):
 
     def forward(self, x):
         return self.model(x)
+
     
 
-    def early_stopping(self, thing, epoch):
-        '''
-        Incase you wanted to use best loss
-        just use "-loss"
-        '''
-        self.check_weight()
-        # Early stopping
-        if (thing > self.best_acc) and (np.abs(thing - self.best_acc) > np.abs(self.best_acc) / self.e_ratio):
-            self.best_acc = thing
-            self.best_epoch = epoch
-            self.current_patience = 0
 
-            # Save the model's weights
-            torch.save(self.state_dict(), self.save_path)
-            print("<<<<<<<  !Model saved!  >>>>>>>")
-            return False
-        else:
-            self.current_patience += 1
-            # Check if the patience limit is reached
-            if self.current_patience >= self.patience:
-                print("Early stopping triggered!")
-                return True
-            else:
-                return False
-    
-    def check_weight(self):
-        for k in self.weight_dic.keys():
-            if self.metrics_now[k] > self.metrics_best[k]:
-                self.metrics_best[k] = self.metrics_now[k]
-                self.weight_dic[k] = self.state_dict()
-    

@@ -31,6 +31,7 @@ network = utils.load_model(models.Network(26), weight_dir)
 
 weight_dir = r'F:\thesis\Articles\2nd\cod\others\aux_weight_1.pth'
 auxiliary =  models.AuxNet(n_layer=1, in_dim=1024*5, out_dim=1024, best_acc=-100)
+auxiliary.save_path = 'model_weights_aux.pth'
 
 feature_extractor = network.feature_extractor
 classifier = network.classifier
@@ -120,21 +121,21 @@ for epoch in range(EPOCHS):
             batch_labels = batch_labels.to(device)
             batch_label = batch_labels[:,2]
             
-        batch_data = batch_data.flatten(1,2)
-        features = MODEL(batch_data)
-        outputs = classifier(features)
-        loss = CRITERION(outputs, batch_label)
+            batch_data = batch_data.flatten(1,2)
+            features = MODEL(batch_data)
+            outputs = classifier(features)
+            loss = CRITERION(outputs, batch_label)
 
 
-        train_loss += loss.item()
-        _, predicted = torch.max(outputs, 1)
-        total_train += batch_labels.size(0)
-        correct_train += (predicted == batch_label).sum().item()
+            train_loss += loss.item()
+            _, predicted = torch.max(outputs, 1)
+            total_train += batch_labels.size(0)
+            correct_train += (predicted == batch_label).sum().item()
 
-        test_loss += loss.item()
-        _, predicted = torch.max(outputs,1)
-        total_test += batch_labels.size(0)
-        correct_test += (predicted == batch_label).sum().item()
+            test_loss += loss.item()
+            _, predicted = torch.max(outputs,1)
+            total_test += batch_labels.size(0)
+            correct_test += (predicted == batch_label).sum().item()
 
     test_loss_log = test_loss / len(TEST_DATALOADER)
     test_acc_log = 100 * correct_test / total_test
