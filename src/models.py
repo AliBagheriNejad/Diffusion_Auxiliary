@@ -192,6 +192,55 @@ class AuxNet(BaseModel):
     def forward(self, x):
         return self.model(x)
 
+class DiffusionProcess:
+
+    def __init__(self, T, beta_start, beta_end):
+
+        self.beta = torch.linspace(beta_start, beta_end, T)
+        self.alpha = 1 - self.beta
+        self.alpha_cumprod = torch.cumprod(self.alpha, dim=0)
+
+    # Forward diffusion process
+    def q_sample(self, x0, t, noise=None):
+        if noise is None:
+            noise = torch.randn_like(x0)
+        sqrt_ab = torch.sqrt(self.alpha_cumprod[t])
+        sqrt_one_minus_ab = torch.sqrt(1 - self.alpha_cumprod[t])
+        return sqrt_ab * x0 + sqrt_one_minus_ab * noise
+
+    # Backward diffusion process
+    def p_sample(self, x_t, t, noise_pred):
+        beta_t = self.beta[t]
+        alpha_t = self.alpha[t]
+        alpha_bar_t = self.alpha_cumprod[t]
+
+        mu = (1/torch.sqrt(alpha_t)) * (
+            x_t - (beta_t / torch.sqrt(1 - alpha_bar_t)) * noise_pred
+        )
+
+        if t > 0:
+            z = torch.randn_like(x_t)
+            sigma = torch.sqrt(beta_t)
+            x_prev = mu + sigma * z
+        else:
+            x_prev = mu
+            
+        return x_prev
+
+def sinusoidal_embedding(timesteps, dim):
     
+    device = timesteps.device
+    half_dim = dim // 2
+    freq = torch.exp(
+        -torch.arange(half_dim, device=device) * torch.log(torch.tensor(10000.0)) / half_dim
+    )
+    angles = timesteps[:, None].float() * freq[None, :]
+    emb = torch.cat([torch.sin(angles), torch.cos(angles)], dim=-1)
+    return emb  # (batch, dim)
+
+
+
+
+
 
 

@@ -2,4 +2,7 @@ Data/*
 *.ipynb
 temp/*
 diffusion base code.txt
+time step embedding.txt
 *.pth
+*.pt
+*.ph

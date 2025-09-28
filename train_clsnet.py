@@ -53,7 +53,7 @@ network.save_path = 'model_weights_network.pth'
 # =====================================================
 MODE = 'aux_gan'
 MODEL = network
-EPOCHS = 10
+EPOCHS = 100
 TRAIN_DATALOADER = train_loader
 TEST_DATALOADER = test_loader
 OPTIMIZER = optim.Adam(MODEL.parameters(), lr=0.001)
