@@ -24,6 +24,7 @@ y_test_tensor = utils.read_pkl('Data/1024/label_test.pkl')
 train_loader = utils.make_loader(X_train_scaled_tensor,y_train_tensor, 128)
 test_loader = utils.make_loader(X_test_scaled_tensor,y_test_tensor, 128)
 
+
 # Load models
 weight_dir = r'F:\thesis\Articles\2nd\mlruns\994478961421787748\5945e3b605184dd4866fcccf6edc6ace\artifacts'
 weight_dir = os.path.join(weight_dir,'test_weight.pth')
