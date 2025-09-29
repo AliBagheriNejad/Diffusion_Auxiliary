@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class BaseModel(nn.Module):
-    def __init__(self, num_classes, save_path='model_weights.pth', patience=10, e_ratio=100, best_acc = 0):
+    def __init__(self, save_path='model_weights.pth', patience=10, e_ratio=100, best_acc = 0):
         super(BaseModel, self).__init__()
         
         # Common attributes
@@ -204,9 +204,10 @@ class DiffusionProcess:
     def q_sample(self, x0, t, noise=None):
         if noise is None:
             noise = torch.randn_like(x0)
-        sqrt_ab = torch.sqrt(self.alpha_cumprod[t])
-        sqrt_one_minus_ab = torch.sqrt(1 - self.alpha_cumprod[t])
-        return sqrt_ab * x0 + sqrt_one_minus_ab * noise
+        sqrt_ab = torch.sqrt(self.alpha_cumprod[t]).unsqueeze(0)
+        sqrt_one_minus_ab = torch.sqrt(1 - self.alpha_cumprod[t]).unsqueeze(0)
+
+        return sqrt_ab.T * x0 + sqrt_one_minus_ab.T * noise, noise
 
     # Backward diffusion process
     def p_sample(self, x_t, t, noise_pred):
@@ -238,7 +239,149 @@ def sinusoidal_embedding(timesteps, dim):
     emb = torch.cat([torch.sin(angles), torch.cos(angles)], dim=-1)
     return emb  # (batch, dim)
 
+class ConvBlock(nn.Module):
 
+    def __init__(self, in_channel=1, out_channel=1, ks=3, pad=1, drop=None, mp=None):
+        super().__init__()
+        self.conv = nn.Conv1d(in_channel, out_channel, kernel_size=ks, padding=pad)
+        self.bn = nn.BatchNorm1d(out_channel)
+        if drop is not None:
+            self.dropout = nn.Dropout(drop)
+        else:
+            self.dropout = None
+        if mp is not None:
+            self.pool = nn.MaxPool1d(kernel_size=mp)
+        else:
+            self.pool = None
+
+    def forward(self,x):
+        x = self.conv(x)
+        x = self.bn(x)
+        if self.dropout is not None:
+            x = self.dropout(x)
+        if self.pool is not None:
+            x = self.pool(x)
+
+        return x
+
+class Down(nn.Module):
+
+    def __init__(self, in_channel=1, out_channel=1, mp=2):
+        super().__init__()
+        self.conv1 = ConvBlock(in_channel, out_channel)
+        self.conv2 = ConvBlock(out_channel, out_channel)
+        self.mp = nn.MaxPool1d(mp,mp)
+
+    def forward(self,x):
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x_d = self.mp(x)
+
+        return x, x_d
+    
+class Up(nn.Module):
+
+    def __init__(self,in_channel=1, out_channel=1, us=2):
+        super().__init__()
+        self.up = nn.ConvTranspose1d(in_channel, in_channel//2, kernel_size=us, stride=us)
+        self.conv1 = ConvBlock(in_channel, out_channel)
+        self.conv2 = ConvBlock(out_channel, out_channel)
+
+    def forward(self, x_u, x):
+        x_u = self.up(x_u)
+        x = torch.concat([x_u,x], dim=1)
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+
+        return x
+
+class ConvEmbed(nn.Module):
+
+    def __init__(self, in_channel=1, out_channel=1, last_layer=False):
+        super().__init__()
+        self.conv1 = ConvBlock(in_channel, out_channel)
+        self.conv2 = ConvBlock(out_channel,out_channel)
+        self.last_layer = last_layer
+
+    def forward(self,x):
+        x = F.relu(self.conv1(x))
+        if not self.last_layer:
+            x = F.relu(self.conv2(x))
+        else:
+            x = self.conv2(x)
+
+        return x
+
+class UNET(BaseModel): 
+
+    def __init__(
+            self,
+            in_channel_z = 1,
+            in_channel_x = 2,
+            out_channel_z = 1,
+    ):
+        super().__init__()
+
+        self.d1_z = Down(in_channel_z, 64)
+        self.d2_z = Down(64, 128)
+        self.d3_z = Down(128, 256)
+
+        self.d1_x = Down(in_channel_x, 64)
+        self.d2_x = Down(64, 128)
+        self.d3_x = Down(128, 256)
+
+        self.kz = ConvEmbed(257, 512)
+        self.kx = ConvEmbed(513,512)
+
+        self.u1_z = Up(512,256)
+        self.u2_z = Up(256,128)
+        self.u3_z = Up(128,64)
+        
+        self.u1_x = Up(512,256)
+        self.u2_x = Up(256,128)
+        self.u3_x = Up(128,64)
+
+        self.f1 = ConvEmbed(128,32)
+        self.f2 = ConvEmbed(32,out_channel_z, True)
+
+    def forward(self,x,z,t):
+
+        # Downsampling Z
+        z1, z1_d = self.d1_z(z)
+        z2, z2_d = self.d2_z(z1_d)
+        z3, z3_d = self.d3_z(z2_d)
+
+        # Downsampilng X
+        x1, x1_d = self.d1_x(x)
+        x2, x2_d = self.d2_x(x1_d)
+        x3, x3_d = self.d3_x(x2_d)
+
+        # Concat Low
+        z4 = torch.concat([z3_d, t], dim=1)
+        x4 = torch.concat([x3_d, z4], dim=1)
+
+        # Process Low
+        z4 = self.kz(z4)
+        x4 = self.kx(x4)
+
+        # Upsampling Z
+        z3_u = self.u1_z(z4, z3)
+        z2_u = self.u2_z(z3_u, z2)
+        z1_u = self.u3_z(z2_u, z1)
+
+        # Upsampling X
+        x3_u = self.u1_x(x4, x3)
+        x2_u = self.u2_x(x3_u, x2)
+        x1_u = self.u3_x(x2_u, x1)
+
+        # Concat High
+        z_f = torch.concat([z1_u, x1_u], dim=1)
+
+        # Final Processing
+        z_f = self.f1(z_f)
+        z_f = self.f2(z_f)
+
+        return z_f
 
 
 
