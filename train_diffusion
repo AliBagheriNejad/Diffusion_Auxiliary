@@ -72,7 +72,7 @@ model = models.UNET(1,2,1)
 MODE = 'diffusion'
 MODEL = model
 EPOCHS = 10
-TRAIN_DATALOADER = train_loader
+TRAIN_DATALOADER = test_loader
 TEST_DATALOADER = test_loader
 OPTIMIZER = optim.Adam(model.parameters(), lr=0.00001)
 CRITERION = nn.MSELoss()
@@ -101,7 +101,7 @@ def save_weight_dic():
 fix_temp()
 dfp = models.DiffusionProcess(T, 0.0002, 0.05)
 
-train_losses, train_gen_loss, test_losses, test_gen_loss = [], [], [], []
+train_losses, train_gen_losses, test_losses, test_gen_losses = [], [], [], []
 
 for epoch in range(EPOCHS):
 
@@ -114,23 +114,56 @@ for epoch in range(EPOCHS):
     for i,(batch_z, batch_x) in progress_bar:
          
         batch_z = batch_z.to(device)
-        batch_x = batch_x.to(device)
+        batch_x = batch_x.to(device).permute(0,2,1)
 
         t = torch.randint(0, T, (batch_z.shape[0],), device=device)
-        t_embd = models.sinusoidal_embedding(t, 128)
+        t_embd = models.sinusoidal_embedding(t, 128).unsqueeze(1)
 
         batch_z_noisy, batch_noise = dfp.q_sample(batch_z,t)
 
         OPTIMIZER.zero_grad()
 
-        noise_hat = MODEL(batch_x, batch_z_noisy, t_embd)
+        noise_hat = MODEL(batch_x, batch_z_noisy.unsqueeze(1), t_embd)
+        noise_hat = noise_hat.squeeze()
 
         loss = CRITERION(noise_hat, batch_noise)
 
         loss.backward()
         OPTIMIZER.step()
 
+        train_loss += loss.cpu().detach().numpy()
+        progress_bar.set_postfix_str(f'train_loss={train_loss / (i + 1):.4f}')
+    
+    train_losses.append(train_loss/len(TRAIN_DATALOADER))
 
+    MODEL.eval()
+
+    
+    with torch.no_grad():
+        progress_bar_sample = tqdm.tqdm(enumerate(TRAIN_DATALOADER), total=len(TRAIN_DATALOADER), desc='Train sampling')
+        for i,(batch_z, batch_x) in progress_bar_sample:
+            
+            batch_z_t = torch.randn_like(batch_z)
+            batch_z_t = batch_z_t.to(device)
+
+            batch_z = batch_z.to(device)
+            batch_x = batch_x.to(device).permute(0,2,1)
+
+            for t in range(T-1,-1, -1):
+
+                t = torch.full((batch_z.shape[0],), t, device=device)
+                t_embd = models.sinusoidal_embedding(t, 128).unsqueeze(1)
+
+                noise_hat = MODEL(batch_x, batch_z_t.unsqueeze(1), t_embd)
+                noise_hat = noise_hat.squeeze()
+
+                batch_z_t = dfp.p_sample(batch_z_t, t, noise_hat)
+
+            loss = CRITERION(batch_z_t, batch_z)
+            train_gen_loss += loss.cpu().detach().numpy()
+            progress_bar_sample.set_postfix_str(f'train_loss={train_gen_loss / (i + 1):.4f}')
+
+        train_gen_losses.append(train_gen_loss/len(TRAIN_DATALOADER))
 
 
 

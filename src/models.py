@@ -211,18 +211,18 @@ class DiffusionProcess:
 
     # Backward diffusion process
     def p_sample(self, x_t, t, noise_pred):
-        beta_t = self.beta[t]
-        alpha_t = self.alpha[t]
-        alpha_bar_t = self.alpha_cumprod[t]
+        beta_t = self.beta[t].unsqueeze(0)
+        alpha_t = self.alpha[t].unsqueeze(0)
+        alpha_bar_t = self.alpha_cumprod[t].unsqueeze(0)
 
-        mu = (1/torch.sqrt(alpha_t)) * (
-            x_t - (beta_t / torch.sqrt(1 - alpha_bar_t)) * noise_pred
+        mu = (1/torch.sqrt(alpha_t)).T * (
+            x_t - (beta_t / torch.sqrt(1 - alpha_bar_t)).T * noise_pred
         )
 
-        if t > 0:
+        if t[0] > 0:
             z = torch.randn_like(x_t)
             sigma = torch.sqrt(beta_t)
-            x_prev = mu + sigma * z
+            x_prev = mu + sigma.T * z
         else:
             x_prev = mu
             
