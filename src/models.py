@@ -6,6 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 class BaseModel(nn.Module):
     def __init__(self, save_path='model_weights.pth', patience=10, e_ratio=100, best_acc = 0):
         super(BaseModel, self).__init__()
@@ -196,14 +198,14 @@ class DiffusionProcess:
 
     def __init__(self, T, beta_start, beta_end):
 
-        self.beta = torch.linspace(beta_start, beta_end, T)
+        self.beta = torch.linspace(beta_start, beta_end, T, device=device)
         self.alpha = 1 - self.beta
         self.alpha_cumprod = torch.cumprod(self.alpha, dim=0)
 
     # Forward diffusion process
     def q_sample(self, x0, t, noise=None):
         if noise is None:
-            noise = torch.randn_like(x0)
+            noise = torch.randn_like(x0, device=device)
         sqrt_ab = torch.sqrt(self.alpha_cumprod[t]).unsqueeze(0)
         sqrt_one_minus_ab = torch.sqrt(1 - self.alpha_cumprod[t]).unsqueeze(0)
 
