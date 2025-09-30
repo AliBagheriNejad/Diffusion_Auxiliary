@@ -299,10 +299,14 @@ class Up(nn.Module):
 
 class ConvEmbed(nn.Module):
 
-    def __init__(self, in_channel=1, out_channel=1, last_layer=False):
+    def __init__(self, in_channel=1, out_channel=1, last_layer=False, mp=None):
         super().__init__()
-        self.conv1 = ConvBlock(in_channel, out_channel)
-        self.conv2 = ConvBlock(out_channel,out_channel)
+        if mp is None:
+            self.conv1 = ConvBlock(in_channel, out_channel)
+            self.conv2 = ConvBlock(out_channel,out_channel)
+        if mp is not None:
+            self.conv1 = ConvBlock(in_channel, out_channel, mp=mp)
+            self.conv2 = ConvBlock(out_channel,out_channel, mp=mp)
         self.last_layer = last_layer
 
     def forward(self,x):
@@ -343,8 +347,16 @@ class UNET(BaseModel):
         self.u2_x = Up(256,128)
         self.u3_x = Up(128,64)
 
-        self.f1 = ConvEmbed(128,32)
-        self.f2 = ConvEmbed(32,out_channel_z, True)
+        self.f1 = ConvEmbed(128,256, mp=4)
+        self.f2 = ConvEmbed(256,out_channel_z, True, mp=2)
+
+        self.fc = nn.Sequential(
+            nn.Linear(16*out_channel_z,1024),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+            nn.Linear(1024,1024)
+        )
 
     def forward(self,x,z,t):
 
@@ -382,6 +394,12 @@ class UNET(BaseModel):
         # Final Processing
         z_f = self.f1(z_f)
         z_f = self.f2(z_f)
+
+        # Feed to fully-connected
+        z_flatten = z_f.flatten(1,2)
+        z_f = z_flatten.squeeze()
+        z_f = self.fc(z_f)
+
 
         return z_f
 
