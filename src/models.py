@@ -24,20 +24,20 @@ class BaseModel(nn.Module):
         self.weight_dic = {
             'train_loss': None,
             'train_acc': None,
-            'val_acc': None,
-            'val_loss': None
+            'test_acc': None,
+            'test_loss': None
         }
         self.metrics_now = {
             'train_loss': None,
             'train_acc': None,
-            'val_acc': None,
-            'val_loss': None
+            'test_acc': None,
+            'test_loss': None
         }
         self.metrics_best = {
-            'train_loss': -np.inf,
+            'train_loss': -100,
             'train_acc': 0,
-            'val_acc': 0,
-            'val_loss': -np.inf
+            'test_acc': 0,
+            'test_loss': -100
         }
 
     def early_stopping(self, thing, epoch):
@@ -299,14 +299,12 @@ class Up(nn.Module):
 
 class ConvEmbed(nn.Module):
 
-    def __init__(self, in_channel=1, out_channel=1, last_layer=False, mp=None):
+    def __init__(self, in_channel=1, out_channel=1, last_layer=False, mp=None,drop=None):
         super().__init__()
-        if mp is None:
-            self.conv1 = ConvBlock(in_channel, out_channel)
-            self.conv2 = ConvBlock(out_channel,out_channel)
-        if mp is not None:
-            self.conv1 = ConvBlock(in_channel, out_channel, mp=mp)
-            self.conv2 = ConvBlock(out_channel,out_channel, mp=mp)
+
+        self.conv1 = ConvBlock(in_channel, out_channel, mp=mp, drop=drop)
+        self.conv2 = ConvBlock(out_channel,out_channel, mp=mp, drop=drop)
+
         self.last_layer = last_layer
 
     def forward(self,x):
@@ -395,10 +393,10 @@ class UNET(BaseModel):
         z_f = torch.concat([z1_u, x1_u], dim=1)
 
         # Final Processing
-        z_f = self.f1(z_f)
-        z_f = self.f2(z_f)
-        z_f = self.f3(z_f)
-        z_f = self.f4(z_f)
+        # z_f = self.f1(z_f)
+        # z_f = self.f2(z_f)
+        # z_f = self.f3(z_f)
+        # z_f = self.f4(z_f)
         z_f = self.f5(z_f)
         
 

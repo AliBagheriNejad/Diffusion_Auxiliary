@@ -65,7 +65,7 @@ test_loader = utils.make_loader(
 )
 
 model = models.UNET(1,2,1)
-model.best_acc = -np.inf
+model.save_path = 'temp/model_weight.pth'
 
 
 # Training UNET (diffuxion model)
@@ -85,16 +85,18 @@ T = 10
 MODEL.weight_dic = {
     'train_loss': None,
     'train_gen_loss': None,
-    'val_gen_loss': None,
-    'val_loss': None
+    'test_gen_loss': None,
+    'test_loss': None
 }
 
 MODEL.metrics_best = {
-    'train_loss': -np.inf,
-    'train_gen_loss': -np.inf,
-    'val_gen_loss': -np.inf,
-    'val_loss': -np.inf
+    'train_loss': -100,
+    'train_gen_loss': -100,
+    'test_gen_loss': -100,
+    'test_loss': -100
 }
+
+MODEL.best_acc = MODEL.metrics_best[EARLY_STOPPING]
 
 def fix_temp():
     temp_dir = 'temp'
@@ -246,8 +248,8 @@ for epoch in range(EPOCHS):
     MODEL.metrics_now = {
                 'train_loss': -train_losses[-1],
                 'train_gen_loss': -train_gen_losses[-1],
-                'val_gen_loss': -test_gen_losses[-1],
-                'val_loss': -test_losses[-1],
+                'test_gen_loss': -test_gen_losses[-1],
+                'test_loss': -test_losses[-1],
     } 
 
 
