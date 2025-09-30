@@ -347,16 +347,19 @@ class UNET(BaseModel):
         self.u2_x = Up(256,128)
         self.u3_x = Up(128,64)
 
-        self.f1 = ConvEmbed(128,256, mp=4)
-        self.f2 = ConvEmbed(256,out_channel_z, True, mp=2)
+        self.f1 = ConvEmbed(128,256)
+        self.f2 = ConvEmbed(256,512)
+        self.f3 = ConvEmbed(512,256)
+        self.f4 = ConvEmbed(256,128)
+        self.f5 = ConvEmbed(128,out_channel_z, True)
 
-        self.fc = nn.Sequential(
-            nn.Linear(16*out_channel_z,1024),
-            nn.ReLU(),
-            nn.Linear(1024, 1024),
-            nn.ReLU(),
-            nn.Linear(1024,1024)
-        )
+        # self.fc = nn.Sequential(
+        #     nn.Linear(64*out_channel_z,1024),
+        #     nn.ReLU(),
+        #     nn.Linear(1024, 1024),
+        #     nn.ReLU(),
+        #     nn.Linear(1024,1024)
+        # )
 
     def forward(self,x,z,t):
 
@@ -394,11 +397,15 @@ class UNET(BaseModel):
         # Final Processing
         z_f = self.f1(z_f)
         z_f = self.f2(z_f)
+        z_f = self.f3(z_f)
+        z_f = self.f4(z_f)
+        z_f = self.f5(z_f)
+        
 
         # Feed to fully-connected
-        z_flatten = z_f.flatten(1,2)
-        z_f = z_flatten.squeeze()
-        z_f = self.fc(z_f)
+        # z_flatten = z_f.flatten(1,2)
+        # z_f = z_flatten.squeeze()
+        # z_f = self.fc(z_f)
 
 
         return z_f

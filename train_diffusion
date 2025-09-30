@@ -64,7 +64,7 @@ test_loader = utils.make_loader(
     128
 )
 
-model = models.UNET(1,2,512)
+model = models.UNET(1,2,1)
 model.best_acc = -np.inf
 
 
@@ -75,7 +75,7 @@ MODEL = model
 EPOCHS = 10
 TRAIN_DATALOADER = test_loader
 TEST_DATALOADER = test_loader
-OPTIMIZER = optim.Adam(model.parameters(), lr=0.00001)
+OPTIMIZER = optim.Adam(model.parameters(), lr=0.001)
 CRITERION = nn.MSELoss()
 EARLY_STOPPING = 'test_loss'
 SHOW_GRAD = False
