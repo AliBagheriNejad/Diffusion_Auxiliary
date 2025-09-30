@@ -65,6 +65,7 @@ test_loader = utils.make_loader(
 )
 
 model = models.UNET(1,2,1)
+model.best_acc = -np.inf
 
 
 # Training UNET (diffuxion model)
@@ -77,9 +78,23 @@ TEST_DATALOADER = test_loader
 OPTIMIZER = optim.Adam(model.parameters(), lr=0.00001)
 CRITERION = nn.MSELoss()
 EARLY_STOPPING = 'test_loss'
-SHOW_GRAD = False
+SHOW_GRAD = True
 T = 10
 
+
+MODEL.weight_dic = {
+    'train_loss': None,
+    'train_gen_loss': None,
+    'val_gen_loss': None,
+    'val_loss': None
+}
+
+MODEL.metrics_best = {
+    'train_loss': -np.inf,
+    'train_gen_loss': -np.inf,
+    'val_gen_loss': -np.inf,
+    'val_loss': -np.inf
+}
 
 def fix_temp():
     temp_dir = 'temp'
@@ -102,12 +117,15 @@ fix_temp()
 dfp = models.DiffusionProcess(T, 0.0002, 0.05)
 
 train_losses, train_gen_losses, test_losses, test_gen_losses = [], [], [], []
+train_losses_iter = []
 
 for epoch in range(EPOCHS):
 
     MODEL.train()
     train_loss = 0.0
     train_gen_loss = 0.0
+    test_loss = 0.0
+    test_gen_loss = 0.0
 
     progress_bar = tqdm.tqdm(enumerate(TRAIN_DATALOADER), total=len(TRAIN_DATALOADER), desc=f'Epoch {epoch + 1}/{EPOCHS}')
 
@@ -131,14 +149,22 @@ for epoch in range(EPOCHS):
         loss.backward()
         OPTIMIZER.step()
 
-        train_loss += loss.cpu().detach().numpy()
+        loss_np = loss.cpu().detach().numpy()
+
+        train_losses_iter.append(loss_np)
+        train_loss += loss_np
         progress_bar.set_postfix_str(f'train_loss={train_loss / (i + 1):.4f}')
     
     train_losses.append(train_loss/len(TRAIN_DATALOADER))
 
+    if SHOW_GRAD:
+        for name, param in MODEL.named_parameters():
+            if param.grad is not None:
+                print(f"{name}: {param.grad.mean().item():.10f}")
+
+
     MODEL.eval()
 
-    
     with torch.no_grad():
         progress_bar_sample = tqdm.tqdm(enumerate(TRAIN_DATALOADER), total=len(TRAIN_DATALOADER), desc='Train sampling')
         for i,(batch_z, batch_x) in progress_bar_sample:
@@ -161,10 +187,83 @@ for epoch in range(EPOCHS):
 
             loss = CRITERION(batch_z_t, batch_z)
             train_gen_loss += loss.cpu().detach().numpy()
-            progress_bar_sample.set_postfix_str(f'train_loss={train_gen_loss / (i + 1):.4f}')
+            progress_bar_sample.set_postfix_str(f'train_gen_loss={train_gen_loss / (i + 1):.4f}')
 
         train_gen_losses.append(train_gen_loss/len(TRAIN_DATALOADER))
 
+        test_loss = 0.0
+        test_gen_loss = 0.0
+
+        progress_bar_test = tqdm.tqdm(enumerate(TEST_DATALOADER), total=len(TEST_DATALOADER), desc=f'Test set')
+
+        for i,(batch_z, batch_x) in progress_bar_test:
+            
+            batch_z = batch_z.to(device)
+            batch_x = batch_x.to(device).permute(0,2,1)
+
+            t = torch.randint(0, T, (batch_z.shape[0],), device=device)
+            t_embd = models.sinusoidal_embedding(t, 128).unsqueeze(1)
+
+            batch_z_noisy, batch_noise = dfp.q_sample(batch_z,t)
+
+            noise_hat = MODEL(batch_x, batch_z_noisy.unsqueeze(1), t_embd)
+            noise_hat = noise_hat.squeeze()
+
+            loss = CRITERION(noise_hat, batch_noise)
+
+            test_loss += loss.cpu().detach().numpy()
+            progress_bar_test.set_postfix_str(f'test_loss={test_loss / (i + 1):.4f}')
+        
+        test_losses.append(test_loss/len(TEST_DATALOADER))
+
+
+        progress_bar_sample_test = tqdm.tqdm(enumerate(TEST_DATALOADER), total=len(TEST_DATALOADER), desc='Test sampling')
+        for i,(batch_z, batch_x) in progress_bar_sample_test:
+            
+            batch_z_t = torch.randn_like(batch_z)
+            batch_z_t = batch_z_t.to(device)
+
+            batch_z = batch_z.to(device)
+            batch_x = batch_x.to(device).permute(0,2,1)
+
+            for t in range(T-1,-1, -1):
+
+                t = torch.full((batch_z.shape[0],), t, device=device)
+                t_embd = models.sinusoidal_embedding(t, 128).unsqueeze(1)
+
+                noise_hat = MODEL(batch_x, batch_z_t.unsqueeze(1), t_embd)
+                noise_hat = noise_hat.squeeze()
+
+                batch_z_t = dfp.p_sample(batch_z_t, t, noise_hat)
+
+            loss = CRITERION(batch_z_t, batch_z)
+            test_gen_loss += loss.cpu().detach().numpy()
+            progress_bar_sample_test.set_postfix_str(f'test_gen_loss={test_gen_loss / (i + 1):.4f}')
+
+        test_gen_losses.append(test_gen_loss/len(TEST_DATALOADER))
+
+
+    MODEL.metrics_now = {
+                'train_loss': -train_losses[-1],
+                'train_gen_loss': -train_gen_losses[-1],
+                'val_gen_loss': -test_gen_losses[-1],
+                'val_loss': -test_losses[-1],
+    } 
+
+
+    if EARLY_STOPPING == 'test_gen_loss':
+        do_break = MODEL.early_stopping(test_gen_losses[-1],epoch)
+    elif EARLY_STOPPING == 'test_loss':
+        do_break = MODEL.early_stopping(-test_losses[-1],epoch)
+    elif EARLY_STOPPING == 'train_gen_loss':
+        do_break = MODEL.early_stopping(train_gen_losses[-1],epoch)
+    elif EARLY_STOPPING == 'train_loss':
+        do_break = MODEL.early_stopping(-train_losses[-1],epoch)
+        
+    if do_break:
+        break
+
+    
 
 
 
