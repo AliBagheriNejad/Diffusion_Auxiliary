@@ -299,11 +299,11 @@ class Up(nn.Module):
 
 class ConvEmbed(nn.Module):
 
-    def __init__(self, in_channel=1, out_channel=1, last_layer=False, mp=None,drop=None):
+    def __init__(self, in_channel=1, out_channel=1, last_layer=False, mp=None,drop=None, ks=3, pad=1):
         super().__init__()
 
-        self.conv1 = ConvBlock(in_channel, out_channel, mp=mp, drop=drop)
-        self.conv2 = ConvBlock(out_channel,out_channel, mp=mp, drop=drop)
+        self.conv2 = ConvBlock(out_channel,out_channel, ks=ks, pad=pad, mp=mp, drop=drop)
+        self.conv1 = ConvBlock(in_channel, out_channel, ks=ks, pad=pad, mp=mp, drop=drop)
 
         self.last_layer = last_layer
 
@@ -345,11 +345,25 @@ class UNET(BaseModel):
         self.u2_x = Up(256,128)
         self.u3_x = Up(128,64)
 
-        self.f1 = ConvEmbed(128,256)
-        self.f2 = ConvEmbed(256,512)
-        self.f3 = ConvEmbed(512,256)
-        self.f4 = ConvEmbed(256,128)
-        self.f5 = ConvEmbed(128,out_channel_z, True)
+        self.f1_3 = ConvEmbed(128,256)
+        self.f2_3 = ConvEmbed(256,512)
+        self.f3_3 = ConvEmbed(512,256)
+        self.f4_3 = ConvEmbed(256,128)
+        self.f5_3 = ConvEmbed(128,out_channel_z, True)
+
+        self.f1_5 = ConvEmbed(128,256, ks=5, pad=2)
+        self.f2_5 = ConvEmbed(256,512, ks=5, pad=2)
+        self.f3_5 = ConvEmbed(512,256, ks=5, pad=2)
+        self.f4_5 = ConvEmbed(256,128, ks=5, pad=2)
+        self.f5_5 = ConvEmbed(128,out_channel_z, True, ks=5, pad=2)
+
+        self.f1_7 = ConvEmbed(128,256, ks=7, pad=3)
+        self.f2_7 = ConvEmbed(256,512, ks=7, pad=3)
+        self.f3_7 = ConvEmbed(512,256, ks=7, pad=3)
+        self.f4_7 = ConvEmbed(256,128, ks=7, pad=3)
+        self.f5_7 = ConvEmbed(128,out_channel_z, True, ks=7, pad=3)
+
+        self.final = ConvEmbed(3*out_channel_z, out_channel_z, True)
 
         # self.fc = nn.Sequential(
         #     nn.Linear(64*out_channel_z,1024),
@@ -392,12 +406,29 @@ class UNET(BaseModel):
         # Concat High
         z_f = torch.concat([z1_u, x1_u], dim=1)
 
+        # B_3ranck Processing
+        z_f_3 = self.f1_3(z_f)
+        z_f_3 = self.f2_3(z_f_3)
+        z_f_3 = self.f3_3(z_f_3)
+        z_f_3 = self.f4_3(z_f_3)
+        z_f_3 = self.f5_3(z_f_3)
+
+        z_f_5 = self.f1_5(z_f)
+        z_f_5 = self.f2_5(z_f_5)
+        z_f_5 = self.f3_5(z_f_5)
+        z_f_5 = self.f4_5(z_f_5)
+        z_f_5 = self.f5_5(z_f_5)
+
+        z_f_7 = self.f1_7(z_f)
+        z_f_7 = self.f2_7(z_f_7)
+        z_f_7 = self.f3_7(z_f_7)
+        z_f_7 = self.f4_7(z_f_7)
+        z_f_7 = self.f5_7(z_f_7)
+
+        z_f = torch.concat([z_f_3, z_f_5, z_f_7], dim=1)
+
         # Final Processing
-        # z_f = self.f1(z_f)
-        # z_f = self.f2(z_f)
-        # z_f = self.f3(z_f)
-        # z_f = self.f4(z_f)
-        z_f = self.f5(z_f)
+        z_f = self.final(z_f)
         
 
         # Feed to fully-connected
