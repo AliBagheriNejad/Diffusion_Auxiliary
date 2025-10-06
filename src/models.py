@@ -347,6 +347,10 @@ class UNET(BaseModel):
 
         self.f1_3 = ConvEmbed(128,256)
         self.f2_3 = ConvEmbed(256,512)
+        self.f6_3 = ConvEmbed(512,1024)
+        self.f7_3 = ConvEmbed(1024,2048)
+        self.f8_3 = ConvEmbed(2048,1024)
+        self.f9_3 = ConvEmbed(1024,512)
         self.f3_3 = ConvEmbed(512,256)
         self.f4_3 = ConvEmbed(256,128)
         self.f5_3 = ConvEmbed(128,out_channel_z, True)
@@ -409,26 +413,30 @@ class UNET(BaseModel):
         # B_3ranck Processing
         z_f_3 = self.f1_3(z_f)
         z_f_3 = self.f2_3(z_f_3)
+        z_f_3 = self.f6_3(z_f_3)
+        z_f_3 = self.f7_3(z_f_3)
+        z_f_3 = self.f8_3(z_f_3)
+        z_f_3 = self.f9_3(z_f_3)
         z_f_3 = self.f3_3(z_f_3)
         z_f_3 = self.f4_3(z_f_3)
-        z_f_3 = self.f5_3(z_f_3)
+        z_f = self.f5_3(z_f_3)
 
-        z_f_5 = self.f1_5(z_f)
-        z_f_5 = self.f2_5(z_f_5)
-        z_f_5 = self.f3_5(z_f_5)
-        z_f_5 = self.f4_5(z_f_5)
-        z_f_5 = self.f5_5(z_f_5)
+        # z_f_5 = self.f1_5(z_f)
+        # z_f_5 = self.f2_5(z_f_5)
+        # z_f_5 = self.f3_5(z_f_5)
+        # z_f_5 = self.f4_5(z_f_5)
+        # z_f_5 = self.f5_5(z_f_5)
 
-        z_f_7 = self.f1_7(z_f)
-        z_f_7 = self.f2_7(z_f_7)
-        z_f_7 = self.f3_7(z_f_7)
-        z_f_7 = self.f4_7(z_f_7)
-        z_f_7 = self.f5_7(z_f_7)
+        # z_f_7 = self.f1_7(z_f)
+        # z_f_7 = self.f2_7(z_f_7)
+        # z_f_7 = self.f3_7(z_f_7)
+        # z_f_7 = self.f4_7(z_f_7)
+        # z_f_7 = self.f5_7(z_f_7)
 
-        z_f = torch.concat([z_f_3, z_f_5, z_f_7], dim=1)
+        # z_f = torch.concat([z_f_3, z_f_5, z_f_7], dim=1)
 
-        # Final Processing
-        z_f = self.final(z_f)
+        # # Final Processing
+        # z_f = self.final(z_f)
         
 
         # Feed to fully-connected
