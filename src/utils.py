@@ -17,9 +17,9 @@ def read_pkl(path):
 
     return data
 
-def make_loader(X, y, bs=None):
+def make_loader(*tensors, bs=None):
 
-    dataset = TensorDataset(X,y)
+    dataset = TensorDataset(*tensors)
 
     if bs:
         data_loader = DataLoader(dataset, batch_size=bs, shuffle=False)

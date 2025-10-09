@@ -39,7 +39,7 @@ X_train, X_test, y_train, y_test = train_test_split(
 
 (X_train_scaled, X_test_scaled),scaler_list = utils.scale_it(X_train, X_test)
 
-# X_train_scaled_tensor_x, y_train_tensor_x = utils.tensor_it(X_train_scaled,y_train)
+X_train_scaled_tensor_x, y_train_tensor_x = utils.tensor_it(X_train_scaled,y_train)
 # X_test_scaled_tensor_x, y_test_tensor_x = utils.tensor_it(X_test_scaled,y_test)
 X_train_scaled_tensor_x, _ = utils.tensor_it(X_train_scaled,y_train)
 X_test_scaled_tensor_x, _ = utils.tensor_it(X_test_scaled,y_test)
@@ -47,36 +47,45 @@ X_test_scaled_tensor_x, _ = utils.tensor_it(X_test_scaled,y_test)
 # Load Data Z
 X_train_scaled_tensor = utils.read_pkl('Data/aux_features/features_train.pkl')
 X_test_scaled_tensor = utils.read_pkl('Data/aux_features/features_test.pkl')
-# y_train_tensor = utils.read_pkl('Data/aux_features/labels_train.pkl')
-# y_test_tensor = utils.read_pkl('Data/aux_features/labels_test.pkl')
+y_train_tensor = utils.read_pkl('Data/aux_features/labels_train.pkl')
+y_test_tensor = utils.read_pkl('Data/aux_features/labels_test.pkl')
 
 # Data Loader
 train_loader = utils.make_loader(
     X_train_scaled_tensor,
     X_train_scaled_tensor_x[:,2,:,:],
-    # y_train_tensor,
-    128
+    y_train_tensor,
+    bs = 128
 )
 test_loader = utils.make_loader(
     X_test_scaled_tensor,
     X_test_scaled_tensor_x[:,2,:,:],
-    # y_test_tensor,
-    128
+    y_test_tensor,
+    bs = 128
 )
 
 model = models.UNET(1,2,1)
 model.save_path = 'temp/model_weight.pth'
+
+# weight_dir = r'F:\thesis\Articles\2nd\mlruns\994478961421787748\5945e3b605184dd4866fcccf6edc6ace\artifacts'
+# weight_dir = os.path.join(weight_dir,'test_weight.pth')
+# network = utils.load_model(models.Network(26), weight_dir)
+network = models.Network(26)
+cls = network.classifier
 
 
 # Training UNET (diffuxion model)
 # ==================================================
 MODE = 'diffusion'
 MODEL = model
+MODEL_CLS = cls
 EPOCHS = 10
 TRAIN_DATALOADER = test_loader
 TEST_DATALOADER = test_loader
-OPTIMIZER = optim.Adam(model.parameters(), lr=0.001)
+OPTIMIZER = optim.Adam(MODEL.parameters(), lr=0.001)
+OPTIMIZER_CLS = optim.Adam(MODEL_CLS.parameters(), lr = 0.00001)
 CRITERION = nn.MSELoss()
+CRITERION_CLS = nn.CrossEntropyLoss()
 EARLY_STOPPING = 'test_loss'
 SHOW_GRAD = False
 T = 10
@@ -121,20 +130,24 @@ dfp = models.DiffusionProcess(T, 0.0002, 0.05)
 train_losses, train_gen_losses, test_losses, test_gen_losses = [], [], [], []
 train_losses_iter = []
 
+train_cls_losses, train_cls_losses_iter = [], []
+
 for epoch in range(EPOCHS):
 
     MODEL.train()
     train_loss = 0.0
     train_gen_loss = 0.0
+    train_cls_loss = 0.0
     test_loss = 0.0
     test_gen_loss = 0.0
 
     progress_bar = tqdm.tqdm(enumerate(TRAIN_DATALOADER), total=len(TRAIN_DATALOADER), desc=f'Epoch {epoch + 1}/{EPOCHS}')
 
-    for i,(batch_z, batch_x) in progress_bar:
+    for i,(batch_z, batch_x, batch_y) in progress_bar:
          
         batch_z = batch_z.to(device)
         batch_x = batch_x.to(device).permute(0,2,1)
+        batch_label = batch_y.to(device)
 
         t = torch.randint(0, T, (batch_z.shape[0],), device=device)
         t_embd = models.sinusoidal_embedding(t, 128).unsqueeze(1)
@@ -146,18 +159,31 @@ for epoch in range(EPOCHS):
         noise_hat = MODEL(batch_x, batch_z_noisy.unsqueeze(1), t_embd)
         noise_hat = noise_hat.squeeze()
 
-        loss = CRITERION(noise_hat, batch_noise)
+        batch_z_t = dfp.p_sample(batch_z_noisy, t, noise_hat)
+        output_cls = MODEL_CLS(batch_z_t.detach())
 
-        loss.backward()
+        loss_mse = CRITERION(noise_hat, batch_noise)
+        loss_cls = CRITERION_CLS(output_cls, batch_label)
+        loss = loss_mse + loss_cls
+        loss.backward(retain_graph=True)
         OPTIMIZER.step()
 
-        loss_np = loss.cpu().detach().numpy()
+        OPTIMIZER_CLS.zero_grad()
+        loss_cls = CRITERION_CLS(MODEL_CLS(batch_z_t.detach()), batch_label)
+        loss_cls.backward()
+        OPTIMIZER_CLS.step()
 
-        train_losses_iter.append(loss_np)
-        train_loss += loss_np
-        progress_bar.set_postfix_str(f'train_loss={train_loss / (i + 1):.4f}')
+        loss_mse_np = loss_mse.cpu().detach().numpy()
+        loss_cls_np = loss_cls.cpu().detach().numpy()
+
+        train_losses_iter.append(loss_mse_np)
+        train_loss += loss_mse_np
+        train_cls_losses_iter.append(loss_cls_np)
+        train_cls_loss += loss_cls_np
+        progress_bar.set_postfix_str(f'train_loss_mse={train_loss / (i + 1):.4f}, train_loss_cls={train_cls_loss / (i + 1):.4f}')
     
     train_losses.append(train_loss/len(TRAIN_DATALOADER))
+    train_cls_losses.append(train_cls_loss/len(TRAIN_DATALOADER))
 
     if SHOW_GRAD:
         for name, param in MODEL.named_parameters():
@@ -169,7 +195,7 @@ for epoch in range(EPOCHS):
 
     with torch.no_grad():
         # progress_bar_sample = tqdm.tqdm(enumerate(TRAIN_DATALOADER), total=len(TRAIN_DATALOADER), desc='\tTrain sampling')
-        # for i,(batch_z, batch_x) in progress_bar_sample:
+        # for i,(batch_z, batch_x, _) in progress_bar_sample:
             
         #     batch_z_t = torch.randn_like(batch_z)
         #     batch_z_t = batch_z_t.to(device)
@@ -198,7 +224,7 @@ for epoch in range(EPOCHS):
 
         progress_bar_test = tqdm.tqdm(enumerate(TEST_DATALOADER), total=len(TEST_DATALOADER), desc=f'\tTest set')
 
-        for i,(batch_z, batch_x) in progress_bar_test:
+        for i,(batch_z, batch_x, _) in progress_bar_test:
             
             batch_z = batch_z.to(device)
             batch_x = batch_x.to(device).permute(0,2,1)
@@ -220,7 +246,7 @@ for epoch in range(EPOCHS):
 
 
         # progress_bar_sample_test = tqdm.tqdm(enumerate(TEST_DATALOADER), total=len(TEST_DATALOADER), desc='\tTest sampling')
-        # for i,(batch_z, batch_x) in progress_bar_sample_test:
+        # for i,(batch_z, batch_x, _) in progress_bar_sample_test:
             
         #     batch_z_t = torch.randn_like(batch_z)
         #     batch_z_t = batch_z_t.to(device)

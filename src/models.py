@@ -99,7 +99,7 @@ class FeatureExtractor(nn.Module):
         self.bn5 = nn.BatchNorm1d(256)
         self.dropout5 = nn.Dropout(drop)
 
-        self.bnf = nn.BatchNorm1d(1024)
+        # self.bnf = nn.BatchNorm1d(1024)
 
     def forward(self, x):
         x = self.pool1(self.dropout1(F.relu(self.bn1(self.conv1(x)))))
@@ -110,13 +110,13 @@ class FeatureExtractor(nn.Module):
 
 
         x = torch.flatten(x, 1)
-        x = self.bnf(x)
+        # x = self.bnf(x)
         return x
 
 class Classifier(BaseModel):
     def __init__(self, num_classes, drop=0.2, in_dim=1024, save_path='model_weights.pth', patience=10, e_ratio=100, best_acc = 0):
         # Initialize the base class
-        super(Classifier, self).__init__(num_classes, save_path, patience, e_ratio, best_acc)
+        super(Classifier, self).__init__(save_path, patience, e_ratio, best_acc)
         
         # Model-specific layers
         self.fc1 = nn.Linear(in_dim, 128)
@@ -138,9 +138,9 @@ class Classifier(BaseModel):
         return x
 
 class Network(BaseModel):
-    def __init__(self, num_classes, in_channels=2, save_path='model_weights.pth', patience=10, e_ratio=100, best_acc=0):
+    def __init__(self, num_classes=26, in_channels=2, save_path='model_weights.pth', patience=10, e_ratio=100, best_acc=0):
         # Initialize the base class
-        super(Network, self).__init__(num_classes, save_path, patience, e_ratio, best_acc)
+        super(Network, self).__init__(save_path, patience, e_ratio, best_acc)
         
         # Model-specific attributes and layers
         self.in_ch = in_channels
@@ -168,7 +168,7 @@ class AuxNet(BaseModel):
             include_y = False,
             best_acc = 0
     ):
-        super().__init__(num_classes, best_acc=best_acc)
+        super().__init__(best_acc=best_acc)
         layers = []
         hidden_size = int((in_dim+out_dim)/2)
         # Input layer
@@ -355,19 +355,19 @@ class UNET(BaseModel):
         self.f4_3 = ConvEmbed(256,128)
         self.f5_3 = ConvEmbed(128,out_channel_z, True)
 
-        self.f1_5 = ConvEmbed(128,256, ks=5, pad=2)
-        self.f2_5 = ConvEmbed(256,512, ks=5, pad=2)
-        self.f3_5 = ConvEmbed(512,256, ks=5, pad=2)
-        self.f4_5 = ConvEmbed(256,128, ks=5, pad=2)
-        self.f5_5 = ConvEmbed(128,out_channel_z, True, ks=5, pad=2)
+        # self.f1_5 = ConvEmbed(128,256, ks=5, pad=2)
+        # self.f2_5 = ConvEmbed(256,512, ks=5, pad=2)
+        # self.f3_5 = ConvEmbed(512,256, ks=5, pad=2)
+        # self.f4_5 = ConvEmbed(256,128, ks=5, pad=2)
+        # self.f5_5 = ConvEmbed(128,out_channel_z, True, ks=5, pad=2)
 
-        self.f1_7 = ConvEmbed(128,256, ks=7, pad=3)
-        self.f2_7 = ConvEmbed(256,512, ks=7, pad=3)
-        self.f3_7 = ConvEmbed(512,256, ks=7, pad=3)
-        self.f4_7 = ConvEmbed(256,128, ks=7, pad=3)
-        self.f5_7 = ConvEmbed(128,out_channel_z, True, ks=7, pad=3)
+        # self.f1_7 = ConvEmbed(128,256, ks=7, pad=3)
+        # self.f2_7 = ConvEmbed(256,512, ks=7, pad=3)
+        # self.f3_7 = ConvEmbed(512,256, ks=7, pad=3)
+        # self.f4_7 = ConvEmbed(256,128, ks=7, pad=3)
+        # self.f5_7 = ConvEmbed(128,out_channel_z, True, ks=7, pad=3)
 
-        self.final = ConvEmbed(3*out_channel_z, out_channel_z, True)
+        # self.final = ConvEmbed(3*out_channel_z, out_channel_z, True)
 
         # self.fc = nn.Sequential(
         #     nn.Linear(64*out_channel_z,1024),
