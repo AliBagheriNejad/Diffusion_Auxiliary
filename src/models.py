@@ -295,9 +295,12 @@ class Up(nn.Module):
 
     def forward(self, x_u, x):
         x_u = self.up(x_u)
+        if x.shape[1] != x_u.shape[1]:
+            n_r = x_u.shape[1] // x.shape[1]
+            x = x.repeat(1,n_r,1)
         x = torch.concat([x_u,x], dim=1)
         x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv2(x)) 
         # x = F.relu(self.conv3(x))
         # x = F.relu(self.conv4(x))
         # x = F.relu(self.conv5(x))
@@ -354,18 +357,18 @@ class UNET(BaseModel):
         self.u6_z = Up(512,512)
         self.u5_z = Up(512,512)
         self.u4_z = Up(512,512)
-        self.u3_z = Up(512,256)
-        self.u2_z = Up(256,128)
-        self.u1_z = Up(128,64)
+        self.u3_z = Up(512,512)
+        self.u2_z = Up(512,512)
+        self.u1_z = Up(512,512)
         
         self.u6_x = Up(512,512)
         self.u5_x = Up(512,512)
         self.u4_x = Up(512,512)
-        self.u3_x = Up(512,256)
-        self.u2_x = Up(256,128)
-        self.u1_x = Up(128,64)
+        self.u3_x = Up(512,512)
+        self.u2_x = Up(512,512)
+        self.u1_x = Up(512,512)
 
-        self.f1_3 = ConvEmbed(128,256)
+        self.f1_3 = ConvEmbed(1024,256)
         # self.f2_3 = ConvEmbed(256,512)
         # self.f6_3 = ConvEmbed(512,512)
         # self.f7_3 = ConvEmbed(512,512)

@@ -67,12 +67,12 @@ test_loader_of = utils.make_loader(
     X_test_scaled_tensor[:160,:],
     X_test_scaled_tensor_x[:160,2,:,:],
     y_test_tensor[:160],
-    bs = 32
+    bs = 8
 )
 
 model = models.UNET(1,2,1)
 model.save_path = 'temp/model_weight.pth'
-model.patience = 40
+model.patience = 10
 
 # weight_dir = r'F:\thesis\Articles\2nd\mlruns\994478961421787748\5945e3b605184dd4866fcccf6edc6ace\artifacts'
 # weight_dir = os.path.join(weight_dir,'test_weight.pth')
@@ -94,9 +94,11 @@ OPTIMIZER_CLS = optim.Adam(MODEL_CLS.parameters(), lr = 0.00001)
 CRITERION = nn.MSELoss()
 CRITERION_CLS = nn.CrossEntropyLoss()
 EARLY_STOPPING = 'train_loss'
-SHOW_GRAD = False
+SHOW_GRAD = True
 T = 50
 
+grad_dic = dict()
+weight_dic = dict()
 
 MODEL.weight_dic = {
     'train_loss': None,
@@ -193,10 +195,17 @@ for epoch in range(EPOCHS):
     train_losses.append(train_loss/len(TRAIN_DATALOADER))
     train_cls_losses.append(train_cls_loss/len(TRAIN_DATALOADER))
 
+  
     if SHOW_GRAD:
+        epoch_dic = dict()
+        epoch_dic_w = dict()
         for name, param in MODEL.named_parameters():
             if param.grad is not None:
-                print(f"{name}: {param.grad.mean().item():.10f}")
+                # print(f"{name}: {param.grad.mean().item():.10f}")
+                epoch_dic[f'{name}'] = param.grad.mean().item()
+                epoch_dic_w[f'{name}'] = param.mean().item()
+        grad_dic[epoch] = epoch_dic
+        weight_dic[epoch] = epoch_dic_w
 
 
     MODEL.eval()
@@ -297,6 +306,14 @@ for epoch in range(EPOCHS):
         
     if do_break:
         break
+
+
+import json
+with open("grad.json", "w") as json_file:
+    json.dump(grad_dic, json_file, indent=4)
+with open("weight.json", "w") as json_file:
+    json.dump(weight_dic, json_file, indent=4)
+
 
 import matplotlib.pyplot as plt
 plt.plot(train_losses_iter)

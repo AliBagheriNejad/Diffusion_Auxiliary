@@ -6,3 +6,4 @@ time step embedding.txt
 *.pth
 *.pt
 *.ph
+*.json
