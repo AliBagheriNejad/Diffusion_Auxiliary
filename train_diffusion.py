@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+from torch.nn.utils import clip_grad_norm_
 
 
 import src.utils as utils
@@ -70,7 +71,7 @@ test_loader_of = utils.make_loader(
     bs = 8
 )
 
-model = models.UNET(1,2,1)
+model = models.UNET(1,2,2)
 model.save_path = 'temp/model_weight.pth'
 model.patience = 10
 
@@ -90,9 +91,9 @@ EPOCHS = 200
 TRAIN_DATALOADER = test_loader_of
 TEST_DATALOADER = test_loader
 OPTIMIZER = optim.Adam(MODEL.parameters(), lr=0.001)
-OPTIMIZER_CLS = optim.Adam(MODEL_CLS.parameters(), lr = 0.00001)
+# OPTIMIZER_CLS = optim.Adam(MODEL_CLS.parameters(), lr = 0.00001)
 CRITERION = nn.MSELoss()
-CRITERION_CLS = nn.CrossEntropyLoss()
+# CRITERION_CLS = nn.CrossEntropyLoss()
 EARLY_STOPPING = 'train_loss'
 SHOW_GRAD = True
 T = 50
@@ -154,26 +155,30 @@ for epoch in range(EPOCHS):
 
     for i,(batch_z, batch_x, batch_y) in progress_bar:
          
-        batch_z = batch_z.to(device)
+        batch_z = batch_x.to(device).permute(0,2,1)
         batch_x = batch_x.to(device).permute(0,2,1)
+        batch_x = torch.zeros_like(batch_x)
         batch_label = batch_y.to(device)
 
         t = torch.randint(0, T, (batch_z.shape[0],), device=device)
 
         batch_z_noisy, batch_noise = dfp.q_sample(batch_z,t)
+        if (batch_z_noisy.shape) == 2:
+            batch_z_noisy = batch_z_noisy.unsqueeze(1)
 
         OPTIMIZER.zero_grad()
 
-        noise_hat = MODEL(batch_x, batch_z_noisy.unsqueeze(1), t)
+        noise_hat = MODEL(batch_x, batch_z_noisy, t)
         noise_hat = noise_hat.squeeze()
 
         # batch_z_t = dfp.p_sample(batch_z_noisy, t, noise_hat)
         # output_cls = MODEL_CLS(batch_z_t.detach())
 
-        loss = CRITERION(noise_hat, batch_noise)
+        loss = CRITERION(noise_hat, batch_noise.repeat(1,384//2,1))
         # loss_cls = CRITERION_CLS(output_cls, batch_label)
         # loss = loss_mse + loss_cls
         loss.backward()
+        clip_grad_norm_(MODEL.parameters(), max_norm=0.1)
         OPTIMIZER.step()
 
         # OPTIMIZER_CLS.zero_grad()
