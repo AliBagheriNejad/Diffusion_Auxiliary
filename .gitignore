@@ -7,3 +7,4 @@ time step embedding.txt
 *.pt
 *.ph
 *.json
+mlruns

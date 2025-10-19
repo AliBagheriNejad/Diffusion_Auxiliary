@@ -283,9 +283,10 @@ class Down(nn.Module):
     
 class Up(nn.Module):
 
-    def __init__(self,in_channel=1, out_channel=1, us=2):
+    def __init__(self,in_channel=1, out_channel=1, us=2, ch_d=2):
         super().__init__()
-        self.up = nn.ConvTranspose1d(in_channel, in_channel//2, kernel_size=us, stride=us)
+        self.up = nn.ConvTranspose1d(in_channel, in_channel//ch_d, kernel_size=us, stride=us)
+        self.up1 = nn.ConvTranspose1d(in_channel, in_channel//2, kernel_size=us, stride=us)
         self.conv1 = ConvBlock(in_channel, out_channel)
         self.conv2 = ConvBlock(out_channel, out_channel)
 
@@ -296,7 +297,7 @@ class Up(nn.Module):
             x = F.relu(self.conv1(x))
             x = F.relu(self.conv2(x)) 
         else:
-            x_u = self.up(x_u)
+            x_u = self.up1(x_u)
             x = torch.concat([x_u,x_u], dim=1)
             x = F.relu(self.conv1(x))
             x = F.relu(self.conv2(x)) 
@@ -357,21 +358,25 @@ class UNET(BaseModel):
         self.kz_0 = ConvEmbed(512, 1024)
         self.kx_0 = ConvEmbed(1024, 2048)
         self.kz = ConvEmbed(1024, 1024)
-        self.kx = ConvEmbed(2048, 2048)
+        self.kx = ConvEmbed(2048, 1024)
 
-        self.u4_z = Up(1024,512)
-        self.u3_z = Up(1024,256)
-        self.u2_z = Up(512,128, us=4)
-        self.u1_z = Up(256,64, us=4)
+        # self.u4_z = Up(1024,512,ch_d=2)
+        self.u3_z = Up(1024,512,ch_d=2)
+        self.u2_z = Up(512,256,ch_d=2)
+        self.u1_z = Up(256,128, us=4,ch_d=2)
+        self.u0_z = Up(128,64, us=4,ch_d=2)
 
-        self.u4_x = Up(2048,512)
-        self.u3_x = Up(1024,256)
-        self.u2_x = Up(512,128, us=4)
-        self.u1_x = Up(256,64, us=4)
+        # self.u4_x = Up(2048,512,ch_d=4)
+        self.u3_x = Up(1024,512,ch_d=2)
+        self.u2_x = Up(512,256,ch_d=2)
+        self.u1_x = Up(256,128, us=4,ch_d=2)
+        self.u0_x = Up(128,64, us=4,ch_d=2)
 
-        self.f1_3 = ConvEmbed(128,128)
+        self.f1 = ConvEmbed(128,64)
 
-        self.conv1 = nn.Conv1d(128, out_channel_z, kernel_size=1, stride=1, padding=0)
+        self.f2 = ConvEmbed(64,16)
+
+        self.conv1 = nn.Conv1d(16, out_channel_z, kernel_size=1, stride=1, padding=0)
 
         
 
@@ -426,10 +431,10 @@ class UNET(BaseModel):
         x7 = x7 + sinusoidal_embedding(t, x7.shape[2]).unsqueeze(1)
 
         # Upsampling Z
-        z4_u = self.u4_z(z7, None)
+        # z4_u = self.u4_z(z7, None)
         # z4_u = z4_u + sinusoidal_embedding(t, z4_u.shape[2]).unsqueeze(1)
 
-        z3_u = self.u3_z(z4_u, z4)
+        z3_u = self.u3_z(z7, z4)
         z3_u = z3_u + sinusoidal_embedding(t, z3_u.shape[2]).unsqueeze(1)
 
         z2_u = self.u2_z(z3_u, z3)
@@ -438,25 +443,34 @@ class UNET(BaseModel):
         z1_u = self.u1_z(z2_u, z2)
         z1_u = z1_u + sinusoidal_embedding(t, z1_u.shape[2]).unsqueeze(1) 
 
+
+        z0_u = self.u0_z(z1_u, z1)
+        z0_u = z0_u + sinusoidal_embedding(t, z0_u.shape[2]).unsqueeze(1) 
+
+
         # Upsampling X
-        x4_u = self.u4_x(x7, x4)
+        # x4_u = self.u4_x(x7, x4)
         # x4_u = x4_u + sinusoidal_embedding(t, x4_u.shape[2]).unsqueeze(1)
 
-        x3_u = self.u3_x(x4_u, x3)
+        x3_u = self.u3_x(x7, x4)
         x3_u = x3_u + sinusoidal_embedding(t, x3_u.shape[2]).unsqueeze(1)
 
-        x2_u = self.u2_x(x3_u, x2)
+        x2_u = self.u2_x(x3_u, x3)
         # x2_u = x2_u + sinusoidal_embedding(t, x2_u.shape[2]).unsqueeze(1)
 
-        x1_u = self.u1_x(x2_u, x1)
+        x1_u = self.u1_x(x2_u, x2)
         x1_u = x1_u + sinusoidal_embedding(t, x1_u.shape[2]).unsqueeze(1)
 
+        x0_u = self.u0_x(x1_u, x1)
+        x0_u = x0_u + sinusoidal_embedding(t, x0_u.shape[2]).unsqueeze(1)
+
         # Concat High
-        z_f = torch.concat([z1_u, x1_u], dim=1)
+        z_f = torch.concat([z0_u, x0_u], dim=1)
         # z_f = z_f + sinusoidal_embedding(t, z_f.shape[2]).unsqueeze(1)
 
         # B_3ranck Processing
-        z_f = self.f1_3(z_f)
+        z_f = self.f1(z_f)
+        z_f = self.f2(z_f)
 
         z_f = self.conv1(z_f)
 

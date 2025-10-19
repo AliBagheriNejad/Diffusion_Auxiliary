@@ -10,6 +10,8 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
+import mlflow
+import inspect
 
 import src.utils as utils
 import src.models as models
@@ -74,9 +76,7 @@ model = models.UNET(1,2,1)
 model.save_path = 'temp/model_weight.pth'
 model.patience = 10
 
-# weight_dir = r'F:\thesis\Articles\2nd\mlruns\994478961421787748\5945e3b605184dd4866fcccf6edc6ace\artifacts'
-# weight_dir = os.path.join(weight_dir,'test_weight.pth')
-# network = utils.load_model(models.Network(26), weight_dir)
+
 network = models.Network(26)
 cls = network.classifier
 
@@ -96,6 +96,7 @@ CRITERION_CLS = nn.CrossEntropyLoss()
 EARLY_STOPPING = 'train_loss'
 SHOW_GRAD = True
 T = 50
+EX_NAME = 'Diffusion model'
 
 grad_dic = dict()
 weight_dic = dict()
@@ -141,6 +142,22 @@ train_losses_iter = []
 
 train_cls_losses, train_cls_losses_iter = [], []
 
+mlflow.set_experiment(EX_NAME)
+
+if mlflow.active_run():
+    mlflow.end_run()
+
+mlflow.start_run()
+## Save code
+source_code = inspect.getsource(models.UNET)
+
+# Create a temporary file to store the source code
+temp_code_file = "temp/model_definition.txt"
+with open(temp_code_file, "w") as f:
+    f.write(source_code)
+    
+# Log the temporary file
+
 for epoch in range(EPOCHS):
 
     MODEL.train()
@@ -167,27 +184,15 @@ for epoch in range(EPOCHS):
         noise_hat = MODEL(batch_x, batch_z_noisy.unsqueeze(1), t)
         noise_hat = noise_hat.squeeze()
 
-        # batch_z_t = dfp.p_sample(batch_z_noisy, t, noise_hat)
-        # output_cls = MODEL_CLS(batch_z_t.detach())
-
         loss = CRITERION(noise_hat, batch_noise)
-        # loss_cls = CRITERION_CLS(output_cls, batch_label)
-        # loss = loss_mse + loss_cls
         loss.backward()
         OPTIMIZER.step()
 
-        # OPTIMIZER_CLS.zero_grad()
-        # loss_cls = CRITERION_CLS(MODEL_CLS(batch_z_t.detach()), batch_label)
-        # loss_cls.backward()
-        # OPTIMIZER_CLS.step()
 
         loss_mse_np = loss.cpu().detach().numpy()
-        # loss_cls_np = loss_cls.cpu().detach().numpy()
 
         train_losses_iter.append(loss_mse_np)
         train_loss += loss_mse_np
-        # train_cls_losses_iter.append(loss_cls_np)
-        # train_cls_loss += loss_cls_np
         progress_bar.set_postfix_str(f'train_loss_mse={train_loss / (i + 1):.4f}, train_loss_cls={train_cls_loss / (i + 1):.4f}')
 
         
@@ -200,89 +205,25 @@ for epoch in range(EPOCHS):
         epoch_dic = dict()
         epoch_dic_w = dict()
         for name, param in MODEL.named_parameters():
-            if param.grad is not None:
-                # print(f"{name}: {param.grad.mean().item():.10f}")
-                epoch_dic[f'{name}'] = param.grad.mean().item()
-                epoch_dic_w[f'{name}'] = param.mean().item()
+            if param.grad is not None:# print(f"{name}: {param.grad.mean().item():.10f}")
+                epoch_dic[f'{name}'] = torch.abs(param.grad).mean().item()
+                epoch_dic_w[f'{name}'] = torch.abs(param).mean().item()
         grad_dic[epoch] = epoch_dic
         weight_dic[epoch] = epoch_dic_w
+
+        # mlflow.log_metrics(epoch_dic, step=epoch)
+        # mlflow.log_metrics(epoch_dic_w, step=epoch)
 
 
     MODEL.eval()
 
     with torch.no_grad():
-        # progress_bar_sample = tqdm.tqdm(enumerate(TRAIN_DATALOADER), total=len(TRAIN_DATALOADER), desc='\tTrain sampling')
-        # for i,(batch_z, batch_x, _) in progress_bar_sample:
-            
-        #     batch_z_t = torch.randn_like(batch_z)
-        #     batch_z_t = batch_z_t.to(device)
-
-        #     batch_z = batch_z.to(device)
-        #     batch_x = batch_x.to(device).permute(0,2,1)
-
-        #     for t in range(T-1,-1, -1):
-
-        #         t = torch.full((batch_z.shape[0],), t, device=device)
-        #         t_embd = models.sinusoidal_embedding(t, 128).unsqueeze(1)
-
-        #         noise_hat = MODEL(batch_x, batch_z_t.unsqueeze(1), t_embd)
-        #         noise_hat = noise_hat.squeeze()
-
-        #         batch_z_t = dfp.p_sample(batch_z_t, t, noise_hat)
-
-        #     loss = CRITERION(batch_z_t, batch_z)
-        #     train_gen_loss += loss.cpu().detach().numpy()
-        #     progress_bar_sample.set_postfix_str(f'train_gen_loss={train_gen_loss / (i + 1):.4f}')
-
         train_gen_losses.append(train_gen_loss/len(TRAIN_DATALOADER))
 
         test_loss = 0.0
         test_gen_loss = 0.0
 
-        # progress_bar_test = tqdm.tqdm(enumerate(TEST_DATALOADER), total=len(TEST_DATALOADER), desc=f'\tTest set')
-
-        # for i,(batch_z, batch_x, _) in progress_bar_test:
-            
-        #     batch_z = batch_z.to(device)
-        #     batch_x = batch_x.to(device).permute(0,2,1)
-
-        #     t = torch.randint(0, T, (batch_z.shape[0],), device=device)
-
-        #     batch_z_noisy, batch_noise = dfp.q_sample(batch_z,t)
-
-        #     noise_hat = MODEL(batch_x, batch_z_noisy.unsqueeze(1), t)
-        #     noise_hat = noise_hat.squeeze()
-
-        #     loss = CRITERION(noise_hat, batch_noise)
-
-        #     test_loss += loss.cpu().detach().numpy()
-        #     progress_bar_test.set_postfix_str(f'test_loss={test_loss / (i + 1):.4f}')
-        
         test_losses.append(test_loss/len(TEST_DATALOADER))
-
-
-        # progress_bar_sample_test = tqdm.tqdm(enumerate(TEST_DATALOADER), total=len(TEST_DATALOADER), desc='\tTest sampling')
-        # for i,(batch_z, batch_x, _) in progress_bar_sample_test:
-            
-        #     batch_z_t = torch.randn_like(batch_z)
-        #     batch_z_t = batch_z_t.to(device)
-
-        #     batch_z = batch_z.to(device)
-        #     batch_x = batch_x.to(device).permute(0,2,1)
-
-        #     for t in range(T-1,-1, -1):
-
-        #         t = torch.full((batch_z.shape[0],), t, device=device)
-        #         t_embd = models.sinusoidal_embedding(t, 128).unsqueeze(1)
-
-        #         noise_hat = MODEL(batch_x, batch_z_t.unsqueeze(1), t_embd)
-        #         noise_hat = noise_hat.squeeze()
-
-        #         batch_z_t = dfp.p_sample(batch_z_t, t, noise_hat)
-
-        #     loss = CRITERION(batch_z_t, batch_z)
-        #     test_gen_loss += loss.cpu().detach().numpy()
-        #     progress_bar_sample_test.set_postfix_str(f'test_gen_loss={test_gen_loss / (i + 1):.4f}')
 
         test_gen_losses.append(test_gen_loss/len(TEST_DATALOADER))
 
@@ -294,6 +235,8 @@ for epoch in range(EPOCHS):
                 'test_loss': -test_losses[-1],
     } 
 
+    mlflow.log_metrics(MODEL.metrics_now, step=epoch)
+
 
     if EARLY_STOPPING == 'test_gen_loss':
         do_break = MODEL.early_stopping(test_gen_losses[-1],epoch)
@@ -303,21 +246,24 @@ for epoch in range(EPOCHS):
         do_break = MODEL.early_stopping(train_gen_losses[-1],epoch)
     elif EARLY_STOPPING == 'train_loss':
         do_break = MODEL.early_stopping(-train_losses[-1],epoch)
-        
+
     if do_break:
         break
 
 
 import json
-with open("grad.json", "w") as json_file:
+with open("temp/grad.json", "w") as json_file:
     json.dump(grad_dic, json_file, indent=4)
-with open("weight.json", "w") as json_file:
+with open("temp/weight.json", "w") as json_file:
     json.dump(weight_dic, json_file, indent=4)
 
+mlflow.log_artifacts('temp', 'artifacts')
 
-import matplotlib.pyplot as plt
-plt.plot(train_losses_iter)
-plt.show()
+mlflow.end_run()
+
+# import matplotlib.pyplot as plt
+# plt.plot(train_losses_iter)
+# plt.show()
 
 
 
