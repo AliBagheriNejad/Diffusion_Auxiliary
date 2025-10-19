@@ -71,7 +71,7 @@ test_loader_of = utils.make_loader(
     bs = 8
 )
 
-model = models.UNET(1,2,2)
+model = models.UNET(1,2,1)
 model.save_path = 'temp/model_weight.pth'
 model.patience = 10
 
@@ -155,15 +155,14 @@ for epoch in range(EPOCHS):
 
     for i,(batch_z, batch_x, batch_y) in progress_bar:
          
-        batch_z = batch_x.to(device).permute(0,2,1)
+        batch_z = batch_z.to(device)#.permute(0,2,1)
         batch_x = batch_x.to(device).permute(0,2,1)
-        batch_x = torch.zeros_like(batch_x)
         batch_label = batch_y.to(device)
 
         t = torch.randint(0, T, (batch_z.shape[0],), device=device)
 
         batch_z_noisy, batch_noise = dfp.q_sample(batch_z,t)
-        if (batch_z_noisy.shape) == 2:
+        if len(batch_z_noisy.shape) == 2:
             batch_z_noisy = batch_z_noisy.unsqueeze(1)
 
         OPTIMIZER.zero_grad()
@@ -174,11 +173,11 @@ for epoch in range(EPOCHS):
         # batch_z_t = dfp.p_sample(batch_z_noisy, t, noise_hat)
         # output_cls = MODEL_CLS(batch_z_t.detach())
 
-        loss = CRITERION(noise_hat, batch_noise.repeat(1,384//2,1))
+        loss = CRITERION(noise_hat, batch_noise)
         # loss_cls = CRITERION_CLS(output_cls, batch_label)
         # loss = loss_mse + loss_cls
         loss.backward()
-        clip_grad_norm_(MODEL.parameters(), max_norm=0.1)
+        # clip_grad_norm_(MODEL.parameters(), max_norm=0.1)
         OPTIMIZER.step()
 
         # OPTIMIZER_CLS.zero_grad()
@@ -207,8 +206,8 @@ for epoch in range(EPOCHS):
         for name, param in MODEL.named_parameters():
             if param.grad is not None:
                 # print(f"{name}: {param.grad.mean().item():.10f}")
-                epoch_dic[f'{name}'] = param.grad.mean().item()
-                epoch_dic_w[f'{name}'] = param.mean().item()
+                epoch_dic[f'{name}'] = torch.abs(param.grad).mean().item()
+                epoch_dic_w[f'{name}'] = torch.abs(param).mean().item()
         grad_dic[epoch] = epoch_dic
         weight_dic[epoch] = epoch_dic_w
 
@@ -320,9 +319,9 @@ with open("weight.json", "w") as json_file:
     json.dump(weight_dic, json_file, indent=4)
 
 
-import matplotlib.pyplot as plt
-plt.plot(train_losses_iter)
-plt.show()
+# import matplotlib.pyplot as plt
+# plt.plot(train_losses_iter)
+# plt.show()
 
 
 

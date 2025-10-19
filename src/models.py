@@ -72,7 +72,7 @@ class BaseModel(nn.Module):
                 self.weight_dic[k] = self.state_dict()
 
 class FeatureExtractor(nn.Module):
-    def __init__(self, drop=0.1, input_channels=1):
+    def __init__(self, drop=0.1, input_channels=1, last_layer=False):
         super(FeatureExtractor, self).__init__()
 
         self.conv1 = nn.Conv1d(input_channels, 16, kernel_size=128)
@@ -99,6 +99,8 @@ class FeatureExtractor(nn.Module):
         self.bn5 = nn.BatchNorm1d(256)
         self.dropout5 = nn.Dropout(drop)
 
+        self.last_layer = last_layer
+
         # self.bnf = nn.BatchNorm1d(1024)
 
     def forward(self, x):
@@ -106,8 +108,10 @@ class FeatureExtractor(nn.Module):
         x = self.pool2(self.dropout2(F.relu(self.bn2(self.conv2(x)))))
         x = self.pool3(self.dropout3(F.relu(self.bn3(self.conv3(x)))))
         x = self.pool4(self.dropout4(F.relu(self.bn4(self.conv4(x)))))
-        x = self.dropout5(F.relu(self.bn5(self.conv5(x))))
-
+        if not self.last_layer:
+            x = self.dropout5(F.relu(self.bn5(self.conv5(x))))
+        else:
+            x = (self.conv5(x))
 
         x = torch.flatten(x, 1)
         # x = self.bnf(x)
@@ -286,10 +290,12 @@ class Up(nn.Module):
 
     def __init__(self,in_channel=1, out_channel=1, us=2):
         super().__init__()
-        self.up = nn.ConvTranspose1d(in_channel, out_channel, kernel_size=us, stride=us)
+        self.up = lambda x:F.interpolate(x, scale_factor=us, mode='linear', align_corners=False)
+        self.ch_mp = ChannelMaxPool(in_channel//out_channel)
 
     def forward(self, x_u, x):
         x_u = self.up(x_u)
+        x_u = self.ch_mp(x_u)
         x = torch.concat([x_u,x], dim=1)
 
         return x
@@ -314,7 +320,7 @@ class ConvEmbed(nn.Module):
 
     def forward(self,x):
         x = self.af(self.conv1(x)) + x
-        x = self.af(self.conv2(x))
+        x = self.af(self.conv2(x)) + x
 
         return x
     
@@ -326,6 +332,19 @@ class Conv1(nn.Module):
 
     def forward(self,x):
         return self.conv(x)
+    
+class ChannelMaxPool(nn.Module):
+
+    def __init__(self,kernel_size):
+        super().__init__()
+        self.mp = nn.AvgPool1d(kernel_size=kernel_size, stride=kernel_size, padding=0)
+
+    def forward(self,x):
+        x = x.permute(0,2,1)
+        x = self.mp(x)
+        x = x.permute(0,2,1)
+
+        return x
 
 
 class UNET(BaseModel): 
@@ -373,83 +392,72 @@ class UNET(BaseModel):
         self.xu_3 = ConvEmbed(1024,activation='relu')
         self.xu_4 = ConvEmbed(2048,activation='relu')
 
-        # self.conv_x = Conv1(256,128)
-
-        self.conv0 = Conv1(384,192)
-        # self.convf = ConvEmbed(64,64)
-        # self.conv2 = Conv1(64,out_channel_z)
-
-        self.conv1 = Conv1(192,192)
-        
+        self.ch_mp = ChannelMaxPool(2)
 
     def forward(self,x,z,t):
         
         # Encoder
-        z1 = z.repeat(1,64//2,1)
+        z1 = z.repeat(1,64,1)
         x1 = x.repeat(1,64//x.shape[1],1)
 
-        z1 = self.zd_1(z1)
-        x1 = self.xd_1(x1)
+        z1 = self.ch_mp(torch.concat([self.zd_1(z1),z1],dim=1))
+        x1 = self.ch_mp(torch.concat([self.xd_1(x1),x1],dim=1))
 
         z2 = self.d4(z1)
         x2 = self.d4(x1)
         x2 = torch.concat([x2,z2],dim=1)
         z2 = z2.repeat(1,2,1)
-        z2 = self.zd_2(z2)
-        x2 = self.xd_2(x2)
+        z2 = self.ch_mp(torch.concat([self.zd_2(z2),z2],dim=1))
+        x2 = self.ch_mp(torch.concat([self.xd_2(x2),x2],dim=1))
 
         z3 = self.d4(z2)
         x3 = self.d4(x2)
         x3 = torch.concat([x3,z3],dim=1)
         z3 = z3.repeat(1,2,1)
-        z3 = self.zd_3(z3)
-        x3 = self.xd_3(x3)
+        z3 = self.ch_mp(torch.concat([self.zd_3(z3),z3],dim=1))
+        x3 = self.ch_mp(torch.concat([self.xd_3(x3),x3],dim=1))
 
         z4 = self.d2(z3)
         x4 = self.d2(x3)
         x4 = torch.concat([x4,z4],dim=1)
         z4 = z4.repeat(1,2,1)
-        z4 = self.zd_4(z4)
-        x4 = self.xd_4(x4)
+        z4 = self.ch_mp(torch.concat([self.zd_4(z4),z4],dim=1))
+        x4 = self.ch_mp(torch.concat([self.xd_4(x4),x4],dim=1))
 
         z5 = self.d2(z4)
         x5 = self.d2(x4)
         x5 = torch.concat([x5,z5],dim=1)
         z5 = z5.repeat(1,2,1)
-        z5 = self.zd_5(z5)
-        x5 = self.xd_5(x5)
+        z5 = self.ch_mp(torch.concat([self.zd_5(z5),z5],dim=1))
+        x5 = self.ch_mp(torch.concat([self.xd_5(x5),x5],dim=1))
 
         # Decoder
         z4_u = self.zuu_4(z5,z4)
         x4_u = self.xuu_4(x5,torch.concat([x4,z4_u],dim=1))
-        z4_u = self.zu_4(z4_u)
-        x4_u = self.xu_4(x4_u)
+        z4_u = self.ch_mp(torch.concat([self.zu_4(z4_u),z4_u],dim=1))
+        x4_u = self.ch_mp(torch.concat([self.xu_4(x4_u),x4_u],dim=1))
 
         z3_u = self.zuu_3(z4_u,z3)
         x3_u = self.xuu_3(x4_u,torch.concat([x3,z3_u],dim=1))
-        z3_u = self.zu_3(z3_u)
-        x3_u = self.xu_3(x3_u)
+        z3_u = self.ch_mp(torch.concat([self.zu_3(z3_u),z3_u],dim=1))
+        x3_u = self.ch_mp(torch.concat([self.xu_3(x3_u),x3_u],dim=1))
 
         z2_u = self.zuu_2(z3_u,z2)
         x2_u = self.xuu_2(x3_u,torch.concat([x2,z2_u],dim=1))
-        z2_u = self.zu_2(z2_u)
-        x2_u = self.xu_2(x2_u)
+        z2_u = self.ch_mp(torch.concat([self.zu_2(z2_u),z2_u],dim=1))
+        x2_u = self.ch_mp(torch.concat([self.xu_2(x2_u),x2_u],dim=1))
 
         z1_u = self.zuu_1(z2_u,z1)
         x1_u = self.xuu_1(x2_u,torch.concat([x1,z1_u],dim=1))
-        z1_u = self.zu_1(z1_u)
-        x1_u = self.xu_1(x1_u)
+        z1_u = self.ch_mp(torch.concat([self.zu_1(z1_u),z1_u],dim=1))
+        x1_u = self.ch_mp(torch.concat([self.xu_1(x1_u),x1_u],dim=1))
+
+
+
 
         # Final flow
-        # x_f = self.conv_x(x1_u)
-        
-        # z_f = torch.concat([z1_u,x_f],dim=1)
         z_f = torch.concat([z1_u,x1_u],dim=1)
-        z_f = self.conv0(z_f)
-        z_f = torch.concat([self.conv1(z_f),z_f], dim=1)
-        # z_f = self.convf(z_f)
-        # z_f = self.conv2(z_f)
-
+        z_f = torch.mean(z_f, axis=1)
 
         return z_f
 
