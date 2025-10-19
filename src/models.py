@@ -295,9 +295,6 @@ class Up(nn.Module):
 
     def forward(self, x_u, x):
         x_u = self.up(x_u)
-        if x.shape[1] != x_u.shape[1]:
-            n_r = x_u.shape[1] // x.shape[1]
-            x = x.repeat(1,n_r,1)
         x = torch.concat([x_u,x], dim=1)
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x)) 
@@ -319,9 +316,9 @@ class ConvEmbed(nn.Module):
         self.last_layer = last_layer
 
     def forward(self,x):
-        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv1(x)) + x
         if not self.last_layer:
-            x = F.relu(self.conv2(x))
+            x = F.relu(self.conv2(x)) + x
         else:
             x = self.conv2(x)
 
@@ -337,68 +334,36 @@ class UNET(BaseModel):
     ):
         super().__init__()
 
-        self.d1_z = Down(in_channel_z, 64)
-        self.d2_z = Down(64, 128)
-        self.d3_z = Down(128, 256)
-        self.d4_z = Down(256, 256)
-        self.d5_z = Down(256, 256)
-        self.d6_z = Down(256, 256)
+        self.d1_z = Down(in_channel_z, 64, mp=1) # 1024
+        self.d2_z = Down(64, 128, mp=4) # 256
+        self.d3_z = Down(128, 256, mp=4) # 64
+        self.d4_z = Down(256, 512) # 32
+        self.d5_z = Down(512, 1024) # 16
 
-        self.d1_x = Down(in_channel_x, 64)
-        self.d2_x = Down(64, 128)
-        self.d3_x = Down(128, 256)
-        self.d4_x = Down(256, 256)
-        self.d5_x = Down(256, 256)
-        self.d6_x = Down(256, 256)
+        self.d1_x = Down(in_channel_x, 64, mp=1)
+        self.d2_x = Down(64, 128, mp = 4)
+        self.d3_x = Down(128, 256, mp=4)
+        self.d4_x = Down(256, 512)
+        self.d5_x = Down(512, 1024)
 
-        self.kz = ConvEmbed(256, 512)
-        self.kx = ConvEmbed(512,512)
+        self.kz = ConvEmbed(1024, 1024)
+        self.kx = ConvEmbed(2048, 2048)
 
-        self.u6_z = Up(512,512)
-        self.u5_z = Up(512,512)
-        self.u4_z = Up(512,512)
-        self.u3_z = Up(512,512)
-        self.u2_z = Up(512,512)
-        self.u1_z = Up(512,512)
+        self.u4_z = Up(1024,512)
+        self.u3_z = Up(1024,256)
+        self.u2_z = Up(512,128, us=4)
+        self.u1_z = Up(256,64, us=4)
+
+        self.u4_x = Up(2048,512)
+        self.u3_x = Up(1024,256)
+        self.u2_x = Up(512,128, us=4)
+        self.u1_x = Up(256,64, us=4)
+
+        self.f1_3 = ConvEmbed(128,128)
+
+        self.conv1 = nn.Conv1d(128, out_channel_z, kernel_size=1, stride=1, padding=0)
+
         
-        self.u6_x = Up(512,512)
-        self.u5_x = Up(512,512)
-        self.u4_x = Up(512,512)
-        self.u3_x = Up(512,512)
-        self.u2_x = Up(512,512)
-        self.u1_x = Up(512,512)
-
-        self.f1_3 = ConvEmbed(1024,256)
-        # self.f2_3 = ConvEmbed(256,512)
-        # self.f6_3 = ConvEmbed(512,512)
-        # self.f7_3 = ConvEmbed(512,512)
-        # self.f8_3 = ConvEmbed(512,512)
-        # self.f9_3 = ConvEmbed(512,512)
-        # self.f3_3 = ConvEmbed(512,256)
-        # self.f4_3 = ConvEmbed(256,256)
-        self.f5_3 = ConvEmbed(256,out_channel_z, True)
-
-        # self.f1_5 = ConvEmbed(128,256, ks=5, pad=2)
-        # self.f2_5 = ConvEmbed(256,512, ks=5, pad=2)
-        # self.f3_5 = ConvEmbed(512,256, ks=5, pad=2)
-        # self.f4_5 = ConvEmbed(256,128, ks=5, pad=2)
-        # self.f5_5 = ConvEmbed(128,out_channel_z, True, ks=5, pad=2)
-
-        # self.f1_7 = ConvEmbed(128,256, ks=7, pad=3)
-        # self.f2_7 = ConvEmbed(256,512, ks=7, pad=3)
-        # self.f3_7 = ConvEmbed(512,256, ks=7, pad=3)
-        # self.f4_7 = ConvEmbed(256,128, ks=7, pad=3)
-        # self.f5_7 = ConvEmbed(128,out_channel_z, True, ks=7, pad=3)
-
-        # self.final = ConvEmbed(3*out_channel_z, out_channel_z, True)
-
-        # self.fc = nn.Sequential(
-        #     nn.Linear(64*out_channel_z,1024),
-        #     nn.ReLU(),
-        #     nn.Linear(1024, 1024),
-        #     nn.ReLU(),
-        #     nn.Linear(1024,1024)
-        # )
 
     def forward(self,x,z,t):
 
@@ -425,10 +390,6 @@ class UNET(BaseModel):
         # z5 = z5 + sinusoidal_embedding(t, z5.shape[2]).unsqueeze(1)
         # z5_d = z5_d + sinusoidal_embedding(t, z5_d.shape[2]).unsqueeze(1)
 
-        z6, z6_d = self.d6_z(z5_d)
-        z6 = z6 + sinusoidal_embedding(t, z6.shape[2]).unsqueeze(1)
-        z6_d = z6_d + sinusoidal_embedding(t, z6_d.shape[2]).unsqueeze(1)
-
         # Downsampilng X
         x1, x1_d = self.d1_x(x)
         # x1 = x1 + sinusoidal_embedding(t, x1.shape[2]).unsqueeze(1)
@@ -448,15 +409,10 @@ class UNET(BaseModel):
 
         x5, x5_d = self.d5_x(x4_d)
         # x5 = x5 + sinusoidal_embedding(t, x5.shape[2]).unsqueeze(1)
-        # x5_d = x5_d + sinusoidal_embedding(t, x5_d.shape[2]). unsqueeze(1)
-        
-        x6, x6_d = self.d6_x(x5_d)
-        x6 = x6 + sinusoidal_embedding(t, x6.shape[2]).unsqueeze(1)
-        x6_d = x6_d + sinusoidal_embedding(t, x6_d.shape[2]). unsqueeze(1)
-
+        # x5_d = x5_d + sinusoidal_embedding(t, x5_d.shape[2]). unsqueeze(1)              
         # Concat Low
-        z7 = z6_d
-        x7 = torch.concat([x6_d, z7], dim=1)
+        z7 = z5_d
+        x7 = torch.concat([x5_d, z7], dim=1)
 
         # Process Low
         z7 = self.kz(z7)
@@ -465,32 +421,20 @@ class UNET(BaseModel):
         x7 = x7 + sinusoidal_embedding(t, x7.shape[2]).unsqueeze(1)
 
         # Upsampling Z
-        z6_u = self.u6_z(z7, z6)
-        # z6_u = z6_u + sinusoidal_embedding(t, z6_u.shape[2]).unsqueeze(1)
-
-        z5_u = self.u5_z(z6_u, z5)
-        z5_u = z5_u + sinusoidal_embedding(t, z5_u.shape[2]).unsqueeze(1)
-
-        z4_u = self.u4_z(z5_u, z4)
+        z4_u = self.u4_z(z7, z5)
         # z4_u = z4_u + sinusoidal_embedding(t, z4_u.shape[2]).unsqueeze(1)
 
-        z3_u = self.u3_z(z4_u, z3)
+        z3_u = self.u3_z(z4_u, z4)
         z3_u = z3_u + sinusoidal_embedding(t, z3_u.shape[2]).unsqueeze(1)
 
-        z2_u = self.u2_z(z3_u, z2)
+        z2_u = self.u2_z(z3_u, z3)
         # z2_u = z2_u + sinusoidal_embedding(t, z2_u.shape[2]).unsqueeze(1)
 
-        z1_u = self.u1_z(z2_u, z1)
+        z1_u = self.u1_z(z2_u, z2)
         z1_u = z1_u + sinusoidal_embedding(t, z1_u.shape[2]).unsqueeze(1) 
 
         # Upsampling X
-        x6_u = self.u6_x(x7, x6)
-        # x6_u = x6_u + sinusoidal_embedding(t, x6_u.shape[2]).unsqueeze(1)
-
-        x5_u = self.u5_x(x6_u, x5)
-        x5_u = x5_u + sinusoidal_embedding(t, x5_u.shape[2]).unsqueeze(1)
-
-        x4_u = self.u4_x(x5_u, x4)
+        x4_u = self.u4_x(x7, x4)
         # x4_u = x4_u + sinusoidal_embedding(t, x4_u.shape[2]).unsqueeze(1)
 
         x3_u = self.u3_x(x4_u, x3)
@@ -507,38 +451,9 @@ class UNET(BaseModel):
         # z_f = z_f + sinusoidal_embedding(t, z_f.shape[2]).unsqueeze(1)
 
         # B_3ranck Processing
-        z_f_3 = self.f1_3(z_f) + sinusoidal_embedding(t, 1024).unsqueeze(1)
-        # z_f_3 = self.f2_3(z_f_3) + sinusoidal_embedding(t, 1024).unsqueeze(1)
-        # z_f_3 = self.f6_3(z_f_3) + sinusoidal_embedding(t, 1024).unsqueeze(1)
-        # z_f_3 = self.f7_3(z_f_3) + sinusoidal_embedding(t, 1024).unsqueeze(1)
-        # z_f_3 = self.f8_3(z_f_3) + sinusoidal_embedding(t, 1024).unsqueeze(1)
-        # z_f_3 = self.f9_3(z_f_3) + sinusoidal_embedding(t, 1024).unsqueeze(1)
-        # z_f_3 = self.f3_3(z_f_3) + sinusoidal_embedding(t, 1024).unsqueeze(1)
-        # z_f_3 = self.f4_3(z_f_3) + sinusoidal_embedding(t, 1024).unsqueeze(1)
-        z_f = self.f5_3(z_f_3)
+        z_f = self.f1_3(z_f)
 
-        # z_f_5 = self.f1_5(z_f) + sinusoidal_embedding(t, 1024).unsqueeze(1)
-        # z_f_5 = self.f2_5(z_f_5) + sinusoidal_embedding(t, 1024).unsqueeze(1)
-        # z_f_5 = self.f3_5(z_f_5) + sinusoidal_embedding(t, 1024).unsqueeze(1)
-        # z_f_5 = self.f4_5(z_f_5) + sinusoidal_embedding(t, 1024).unsqueeze(1)
-        # z_f_5 = self.f5_5(z_f_5) + sinusoidal_embedding(t, 1024).unsqueeze(1)
-
-        # z_f_7 = self.f1_7(z_f) + sinusoidal_embedding(t, 1024).unsqueeze(1)
-        # z_f_7 = self.f2_7(z_f_7) + sinusoidal_embedding(t, 1024).unsqueeze(1)
-        # z_f_7 = self.f3_7(z_f_7) + sinusoidal_embedding(t, 1024).unsqueeze(1)
-        # z_f_7 = self.f4_7(z_f_7) + sinusoidal_embedding(t, 1024).unsqueeze(1)
-        # z_f_7 = self.f5_7(z_f_7) + sinusoidal_embedding(t, 1024).unsqueeze(1)
-
-        # z_f = torch.concat([z_f_3, z_f_5, z_f_7], dim=1) + sinusoidal_embedding(t, 1024).unsqueeze(1)
-
-        # # Final Processing
-        # z_f = self.final(z_f)
-        
-
-        # Feed to fully-connected
-        # z_flatten = z_f.flatten(1,2)
-        # z_f = z_flatten.squeeze()
-        # z_f = self.fc(z_f)
+        z_f = self.conv1(z_f)
 
 
         return z_f
