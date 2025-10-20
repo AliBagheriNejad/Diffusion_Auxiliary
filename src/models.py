@@ -478,6 +478,58 @@ class UNET(BaseModel):
         return z_f
 
 
+class UNETAE(BaseModel): 
 
+    def __init__(
+            self,
+            in_channel_z = 1,
+            out_channel_z = 1,
+    ):
+        super().__init__()
+
+        self.d1_z = Down(in_channel_z, 64, mp=4) # 1024
+        self.d2_z = Down(64, 128, mp=4) # 256
+        self.d3_z = Down(128, 256) # 64
+        self.d4_z = Down(256, 512) # 32
+
+        self.kz_0 = ConvEmbed(512, 1024)
+        self.kz = ConvEmbed(1024, 1024)
+
+        # self.u4_z = Up(1024,512,ch_d=2)
+        self.u4_z = Up(1024,512,ch_d=2)
+        self.u3_z = Up(512,256,ch_d=2)
+        self.u2_z = Up(256,128, us=4,ch_d=2)
+        self.u1_z = Up(128,64, us=4,ch_d=2)
+
+        self.f1 = ConvEmbed(64,64)
+
+        self.f2 = ConvEmbed(64,16)
+
+        self.conv1 = nn.Conv1d(16, out_channel_z, kernel_size=1, stride=1, padding=0)
+
+        
+
+    def forward(self,x):
+
+        x1, x1_d = self.d1_z(x)
+        x2, x2_d = self.d2_z(x1_d)
+        x3, x3_d = self.d3_z(x2_d)
+        x4, x4_d = self.d4_z(x3_d)
+
+        x5 = self.kz_0(x4_d)
+        x5 = self.kz(x5)
+
+        x4_u = self.u4_z(x5, x4)
+        x3_u = self.u3_z(x4_u,x3)
+        x2_u = self.u2_z(x3_u,x2)
+        x1_u = self.u1_z(x2_u,x1)
+
+        x = self.f1(x1_u)
+        x = self.f2(x)
+        x = self.conv1(x)
+
+        
+
+        return x
 
 
