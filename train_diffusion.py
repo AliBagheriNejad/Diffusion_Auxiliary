@@ -72,30 +72,35 @@ test_loader_of = utils.make_loader(
     bs = 8
 )
 
-model = models.UNET(1,2,1)
+model = models.UNETAE(2,2)
 model.save_path = 'temp/model_weight.pth'
 model.patience = 10
+model.e_ratio = 100000
+
+# config = []
+# for p, n in model.named_parameters():
+
+#     if 'conv1' in p:
+#         con = {'params': n, 'lr':0.00001}
+#     else:
+#         con = {'params': n, 'lr':0.001}
+
+#     config.append(con)
 
 
-network = models.Network(26)
-cls = network.classifier
-
-
+description = 'Try with the same timestep'
 # Training UNET (diffuxion model)
 # ==================================================
 MODE = 'diffusion'
 MODEL = model
-MODEL_CLS = cls
 EPOCHS = 200
 TRAIN_DATALOADER = test_loader_of
 TEST_DATALOADER = test_loader
-OPTIMIZER = optim.Adam(MODEL.parameters(), lr=0.001)
-OPTIMIZER_CLS = optim.Adam(MODEL_CLS.parameters(), lr = 0.00001)
+OPTIMIZER = optim.Adam(model.parameters(), lr=0.001)
 CRITERION = nn.MSELoss()
-CRITERION_CLS = nn.CrossEntropyLoss()
 EARLY_STOPPING = 'train_loss'
 SHOW_GRAD = True
-T = 50
+T = 5000
 EX_NAME = 'Diffusion model'
 
 grad_dic = dict()
@@ -135,7 +140,7 @@ def save_weight_dic():
             print(f'Weight <{weight_path}> saved successfully')
 
 fix_temp()
-dfp = models.DiffusionProcess(T, 0.0002, 0.05)
+dfp = models.DiffusionProcess(T, 0.0002, 0.5)
 
 train_losses, train_gen_losses, test_losses, test_gen_losses = [], [], [], []
 train_losses_iter = []
@@ -148,6 +153,9 @@ if mlflow.active_run():
     mlflow.end_run()
 
 mlflow.start_run()
+
+mlflow.set_tag('desc', description)
+mlflow.set_tag('Time steps', T)
 ## Save code
 source_code = inspect.getsource(models.UNET)
 
@@ -175,13 +183,14 @@ for epoch in range(EPOCHS):
         batch_x = batch_x.to(device).permute(0,2,1)
         batch_label = batch_y.to(device)
 
-        t = torch.randint(0, T, (batch_z.shape[0],), device=device)
+        t = torch.randint(0, T, (batch_x.shape[0],), device=device)
+        # t = torch.ones((batch_x.shape[0],), dtype=torch.int32, device=device)*4000
 
-        batch_z_noisy, batch_noise = dfp.q_sample(batch_z,t)
+        batch_z_noisy, batch_noise = dfp.q_sample(batch_x,t)
 
         OPTIMIZER.zero_grad()
 
-        noise_hat = MODEL(batch_x, batch_z_noisy.unsqueeze(1), t)
+        noise_hat = MODEL(batch_x, t)
         noise_hat = noise_hat.squeeze()
 
         loss = CRITERION(noise_hat, batch_noise)

@@ -209,7 +209,7 @@ class DiffusionProcess:
         sqrt_ab = torch.sqrt(self.alpha_cumprod[t]).unsqueeze(0)
         sqrt_one_minus_ab = torch.sqrt(1 - self.alpha_cumprod[t]).unsqueeze(0)
 
-        return sqrt_ab.T * x0 + sqrt_one_minus_ab.T * noise, noise
+        return sqrt_ab.T.unsqueeze(1) * x0 + sqrt_one_minus_ab.T.unsqueeze(1) * noise, noise
 
     # Backward diffusion process
     def p_sample(self, x_t, t, noise_pred):
@@ -509,27 +509,106 @@ class UNETAE(BaseModel):
 
         
 
-    def forward(self,x):
+    def forward(self,x,t=None):
 
-        x1, x1_d = self.d1_z(x)
-        x2, x2_d = self.d2_z(x1_d)
-        x3, x3_d = self.d3_z(x2_d)
-        x4, x4_d = self.d4_z(x3_d)
+        if t is None:
+            x1, x1_d = self.d1_z(x)
+            x2, x2_d = self.d2_z(x1_d)
+            x3, x3_d = self.d3_z(x2_d)
+            x4, x4_d = self.d4_z(x3_d)
 
-        x5 = self.kz_0(x4_d)
-        x5 = self.kz(x5)
+            x5 = self.kz_0(x4_d)
+            x5 = self.kz(x5)
 
-        x4_u = self.u4_z(x5, x4)
-        x3_u = self.u3_z(x4_u,x3)
-        x2_u = self.u2_z(x3_u,x2)
-        x1_u = self.u1_z(x2_u,x1)
+            x4_u = self.u4_z(x5, x4)
+            x3_u = self.u3_z(x4_u,x3)
+            x2_u = self.u2_z(x3_u,x2)
+            x1_u = self.u1_z(x2_u,x1)
 
-        x = self.f1(x1_u)
-        x = self.f2(x)
-        x = self.conv1(x)
+            x = self.f1(x1_u)
+            x = self.f2(x)
+            x = self.conv1(x)
+        else:
+            x1, x1_d = self.d1_z(x)
+            z1 = x1 + sinusoidal_embedding(t, x1.shape[2]).unsqueeze(1)
+            x1_d = x1_d + sinusoidal_embedding(t, x1_d.shape[2]).unsqueeze(1)
+
+            x2, x2_d = self.d2_z(x1_d)
+            x2 = x2 + sinusoidal_embedding(t, x2.shape[2]).unsqueeze(1)
+            x2_d = x2_d + sinusoidal_embedding(t, x2_d.shape[2]).unsqueeze(1)
+            
+            x3, x3_d = self.d3_z(x2_d)
+            x3 = x3 + sinusoidal_embedding(t, x3.shape[2]).unsqueeze(1)
+            x3_d = x3_d + sinusoidal_embedding(t, x3_d.shape[2]).unsqueeze(1)
+            
+            x4, x4_d = self.d4_z(x3_d)
+            x4 = x4 + sinusoidal_embedding(t, x4.shape[2]).unsqueeze(1)
+            x4_d = x4_d + sinusoidal_embedding(t, x4_d.shape[2]).unsqueeze(1)
+            
+
+            x5 = self.kz_0(x4_d)
+            x5 = self.kz(x5)
+            x5 = x5 + sinusoidal_embedding(t,x5.shape[2]).unsqueeze(1)
+
+            x4_u = self.u4_z(x5, x4)
+            x4_u = x4_u + sinusoidal_embedding(t,x4_u.shape[2]).unsqueeze(1)
+
+            x3_u = self.u3_z(x4_u,x3)
+            x3_u = x3_u + sinusoidal_embedding(t,x3_u.shape[2]).unsqueeze(1)
+
+            x2_u = self.u2_z(x3_u,x2)
+            x2_u = x2_u + sinusoidal_embedding(t,x2_u.shape[2]).unsqueeze(1)
+
+            x1_u = self.u1_z(x2_u,x1)
+            x1_u = x1_u + sinusoidal_embedding(t,x1_u.shape[2]).unsqueeze(1)
+
+            x = self.f1(x1_u)
+            x = self.f2(x)
+            x = self.conv1(x)
 
         
 
         return x
 
 
+class FEBased(nn.Module):
+    def __init__(self, drop=0.1, input_channels=1):
+        super(FeatureExtractor, self).__init__()
+
+        self.conv1 = nn.Conv1d(input_channels, 16, kernel_size=128)
+        self.bn1 = nn.BatchNorm1d(16)
+        self.dropout1 = nn.Dropout(drop)
+        self.pool1 = nn.MaxPool1d(kernel_size=4)
+
+        self.conv2 = nn.Conv1d(16, 32, kernel_size=64)
+        self.bn2 = nn.BatchNorm1d(32)
+        self.dropout2 = nn.Dropout(drop)
+        self.pool2 = nn.MaxPool1d(kernel_size=4)
+
+        self.conv3 = nn.Conv1d(32, 64, kernel_size=16)
+        self.bn3 = nn.BatchNorm1d(64)
+        self.dropout3 = nn.Dropout(drop)
+        self.pool3 = nn.MaxPool1d(kernel_size=2)
+
+        self.conv4 = nn.Conv1d(64, 128, kernel_size=3)
+        self.bn4 = nn.BatchNorm1d(128)
+        self.dropout4 = nn.Dropout(drop)
+        self.pool4 = nn.MaxPool1d(kernel_size=2)
+
+        self.conv5 = nn.Conv1d(128, 256, kernel_size=2)
+        self.bn5 = nn.BatchNorm1d(256)
+        self.dropout5 = nn.Dropout(drop)
+
+        # self.bnf = nn.BatchNorm1d(1024)
+
+    def forward(self, x):
+        x = self.pool1(self.dropout1(F.relu(self.bn1(self.conv1(x)))))
+        x = self.pool2(self.dropout2(F.relu(self.bn2(self.conv2(x)))))
+        x = self.pool3(self.dropout3(F.relu(self.bn3(self.conv3(x)))))
+        x = self.pool4(self.dropout4(F.relu(self.bn4(self.conv4(x)))))
+        x = self.conv5(x)
+
+
+        x = torch.flatten(x, 1)
+        # x = self.bnf(x)
+        return x
