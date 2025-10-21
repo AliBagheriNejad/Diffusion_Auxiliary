@@ -72,22 +72,22 @@ test_loader_of = utils.make_loader(
     bs = 8
 )
 
-model = models.UNETAE(2,2)
+model = models.FEBased(input_channels=2)
 model.save_path = 'temp/model_weight.pth'
-model.patience = 15
+model.patience = 20
 
 config = []
 for p, n in model.named_parameters():
 
     if 'conv1' in p:
-        con = {'params': n, 'lr':0.001}
+        con = {'params': n, 'lr':0.01}
     else:
-        con = {'params': n, 'lr':0.001}
+        con = {'params': n, 'lr':0.01}
 
     config.append(con)
 
 
-description = 'Just hgih learning rate'
+description = 'fe arch'
 
 # Training UNET (diffuxion model)
 # ==================================================
@@ -96,7 +96,7 @@ MODEL = model
 EPOCHS = 200
 TRAIN_DATALOADER = test_loader_of
 TEST_DATALOADER = test_loader
-OPTIMIZER = optim.Adam(config)
+OPTIMIZER = optim.Adam(MODEL.parameters(), lr=0.001)
 CRITERION = nn.MSELoss()
 EARLY_STOPPING = 'train_loss'
 SHOW_GRAD = True
@@ -183,7 +183,7 @@ for epoch in range(EPOCHS):
 
         OPTIMIZER.zero_grad()
 
-        batch_hat = MODEL(batch_x)
+        batch_hat = MODEL(batch_x, None)
         batch_hat = batch_hat.squeeze()
 
         loss = CRITERION(batch_hat, batch_x)

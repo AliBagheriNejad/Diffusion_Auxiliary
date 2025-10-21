@@ -239,7 +239,7 @@ def sinusoidal_embedding(timesteps, dim):
     )
     angles = timesteps[:, None].float() * freq[None, :]
     emb = torch.cat([torch.sin(angles), torch.cos(angles)], dim=-1)
-    return emb/5  # (batch, dim)
+    return emb  # (batch, dim)
 
 class ConvBlock(nn.Module):
 
@@ -571,9 +571,9 @@ class UNETAE(BaseModel):
         return x
 
 
-class FEBased(nn.Module):
+class FEBased(BaseModel):
     def __init__(self, drop=0.1, input_channels=1):
-        super(FeatureExtractor, self).__init__()
+        super().__init__()
 
         self.conv1 = nn.Conv1d(input_channels, 16, kernel_size=128)
         self.bn1 = nn.BatchNorm1d(16)
@@ -595,20 +595,63 @@ class FEBased(nn.Module):
         self.dropout4 = nn.Dropout(drop)
         self.pool4 = nn.MaxPool1d(kernel_size=2)
 
-        self.conv5 = nn.Conv1d(128, 256, kernel_size=2)
-        self.bn5 = nn.BatchNorm1d(256)
+        self.conv5 = nn.Conv1d(128, 512, kernel_size=2)
+        self.bn5 = nn.BatchNorm1d(512)
         self.dropout5 = nn.Dropout(drop)
+
+
+        self.embed1 = ConvEmbed(16,16)
+        self.embed2 = ConvEmbed(32,32)
+        self.embed3 = ConvEmbed(64,64)
+        self.embed4 = ConvEmbed(128,128)
+        # self.embed5 = ConvEmbed(512,512)
 
         # self.bnf = nn.BatchNorm1d(1024)
 
-    def forward(self, x):
-        x = self.pool1(self.dropout1(F.relu(self.bn1(self.conv1(x)))))
-        x = self.pool2(self.dropout2(F.relu(self.bn2(self.conv2(x)))))
-        x = self.pool3(self.dropout3(F.relu(self.bn3(self.conv3(x)))))
-        x = self.pool4(self.dropout4(F.relu(self.bn4(self.conv4(x)))))
-        x = self.conv5(x)
+    def forward(self, x, t):
+
+        def with_time(x):
+            x = self.pool1(self.dropout1(F.relu(self.bn1(self.conv1(x)))))
+            x = self.embed1(x)
+            x = x + sinusoidal_embedding(t,x.shape[2]).unsqueeze(1)
+
+            x = self.pool2(self.dropout2(F.relu(self.bn2(self.conv2(x)))))
+            x = self.embed2(x)
+            x = x + sinusoidal_embedding(t,x.shape[2]).unsqueeze(1)
+            
+            x = self.pool3(self.dropout3(F.relu(self.bn3(self.conv3(x)))))
+            x = self.embed3(x)
+            x = x + sinusoidal_embedding(t,x.shape[2]).unsqueeze(1)
+            
+            x = self.pool4(self.dropout4(F.relu(self.bn4(self.conv4(x)))))
+            x = self.embed4(x)
+            # x = x + sinusoidal_embedding(t,x.shape[2]).unsqueeze(1)
+            
+            x = self.conv5(x)
 
 
-        x = torch.flatten(x, 1)
+        def without(x):
+            x = self.pool1(self.dropout1(F.relu(self.bn1(self.conv1(x)))))
+            x = self.embed1(x)
+
+            x = self.pool2(self.dropout2(F.relu(self.bn2(self.conv2(x)))))
+            x = self.embed2(x)
+            
+            x = self.pool3(self.dropout3(F.relu(self.bn3(self.conv3(x)))))
+            x = self.embed3(x)
+            
+            x = self.pool4(self.dropout4(F.relu(self.bn4(self.conv4(x)))))
+            x = self.embed4(x)
+            # x = x + sinusoidal_embedding(t,x.shape[2]).unsqueeze(1)
+            
+            x = self.conv5(x)
+            return x
+
+        if t is None:
+            x = without(x)
+        else :
+            x = with_time(x)
+
+        x = x.reshape(-1,2,1024)
         # x = self.bnf(x)
         return x

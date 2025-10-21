@@ -72,7 +72,7 @@ test_loader_of = utils.make_loader(
     bs = 8
 )
 
-model = models.UNETAE(2,2)
+model = models.FEBased(input_channels=2)
 model.save_path = 'temp/model_weight.pth'
 model.patience = 10
 model.e_ratio = 100000
@@ -88,7 +88,7 @@ model.e_ratio = 100000
 #     config.append(con)
 
 
-description = 'Try with the same timestep'
+description = 'Febased (fixd time step)'
 # Training UNET (diffuxion model)
 # ==================================================
 MODE = 'diffusion'
@@ -96,7 +96,7 @@ MODEL = model
 EPOCHS = 200
 TRAIN_DATALOADER = test_loader_of
 TEST_DATALOADER = test_loader
-OPTIMIZER = optim.Adam(model.parameters(), lr=0.001)
+OPTIMIZER = optim.Adam(model.parameters(), lr=0.0001)
 CRITERION = nn.MSELoss()
 EARLY_STOPPING = 'train_loss'
 SHOW_GRAD = True
@@ -140,7 +140,7 @@ def save_weight_dic():
             print(f'Weight <{weight_path}> saved successfully')
 
 fix_temp()
-dfp = models.DiffusionProcess(T, 0.0002, 0.5)
+dfp = models.DiffusionProcess(T, 0.0002, 0.05)
 
 train_losses, train_gen_losses, test_losses, test_gen_losses = [], [], [], []
 train_losses_iter = []
@@ -183,8 +183,8 @@ for epoch in range(EPOCHS):
         batch_x = batch_x.to(device).permute(0,2,1)
         batch_label = batch_y.to(device)
 
-        t = torch.randint(0, T, (batch_x.shape[0],), device=device)
-        # t = torch.ones((batch_x.shape[0],), dtype=torch.int32, device=device)*4000
+        # t = torch.randint(0, T, (batch_x.shape[0],), device=device)
+        t = torch.ones((batch_x.shape[0],), dtype=torch.int32, device=device)*4000
 
         batch_z_noisy, batch_noise = dfp.q_sample(batch_x,t)
 
