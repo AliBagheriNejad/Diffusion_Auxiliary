@@ -72,7 +72,7 @@ test_loader_of = utils.make_loader(
     bs = 8
 )
 
-model = models.FEBased(input_channels=2)
+model = models.UNETAE(2,2).to(device)
 model.save_path = 'temp/model_weight.pth'
 model.patience = 20
 
@@ -80,21 +80,21 @@ config = []
 for p, n in model.named_parameters():
 
     if 'conv1' in p:
-        con = {'params': n, 'lr':0.01}
+        con = {'params': n, 'lr':0.001}
     else:
-        con = {'params': n, 'lr':0.01}
+        con = {'params': n, 'lr':0.001}
 
     config.append(con)
 
 
-description = 'fe arch'
+description = 'try unet with full data'
 
 # Training UNET (diffuxion model)
 # ==================================================
 MODE = 'diffusion'
-MODEL = model
+MODEL = model.to(device)
 EPOCHS = 200
-TRAIN_DATALOADER = test_loader_of
+TRAIN_DATALOADER = train_loader
 TEST_DATALOADER = test_loader
 OPTIMIZER = optim.Adam(MODEL.parameters(), lr=0.001)
 CRITERION = nn.MSELoss()
@@ -102,6 +102,8 @@ EARLY_STOPPING = 'train_loss'
 SHOW_GRAD = True
 T = 50
 EX_NAME = 'Unet AE'
+
+MODEL.to(device)
 
 grad_dic = dict()
 weight_dic = dict()
