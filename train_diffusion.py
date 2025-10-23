@@ -15,6 +15,7 @@ import inspect
 
 import src.utils as utils
 import src.models as models
+import src.transformer as transformer
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -72,7 +73,22 @@ test_loader_of = utils.make_loader(
     bs = 8
 )
 
-model = models.FEBased(input_channels=2)
+model_params = {
+    'seq_len': 1024,
+    'd_model': 256,
+    'num_heads': 8, 
+    'num_layers': 1, # number of transformer layers
+    'd_ff': 256,
+}
+model = transformer.SignalTransformer(**model_params)
+
+# model_params = {
+#     'in_channel_z': 2,
+#     'out_channel_z': 2
+# } 
+# model = models.UNETAE(**model_params)
+
+
 model.save_path = 'temp/model_weight.pth'
 model.patience = 10
 model.e_ratio = 100000
@@ -88,7 +104,7 @@ model.e_ratio = 100000
 #     config.append(con)
 
 
-description = 'Febased (fixd time step)'
+description = 'Transformer (generation, signle time-step)'
 # Training UNET (diffuxion model)
 # ==================================================
 MODE = 'diffusion'
@@ -100,7 +116,7 @@ OPTIMIZER = optim.Adam(model.parameters(), lr=0.0001)
 CRITERION = nn.MSELoss()
 EARLY_STOPPING = 'train_loss'
 SHOW_GRAD = True
-T = 5000
+T = 1000
 EX_NAME = 'Diffusion model'
 
 grad_dic = dict()
@@ -140,7 +156,13 @@ def save_weight_dic():
             print(f'Weight <{weight_path}> saved successfully')
 
 fix_temp()
-dfp = models.DiffusionProcess(T, 0.0002, 0.05)
+dfp_params = {
+    'T': T,
+    'beta_start': -6,
+    'beta_end': -1,
+    'beta_type': 'lin'
+}
+dfp = models.DiffusionProcess(**dfp_params)
 
 train_losses, train_gen_losses, test_losses, test_gen_losses = [], [], [], []
 train_losses_iter = []
@@ -156,6 +178,8 @@ mlflow.start_run()
 
 mlflow.set_tag('desc', description)
 mlflow.set_tag('Time steps', T)
+mlflow.log_params(model_params)
+mlflow.log_params(dfp_params)
 ## Save code
 source_code = inspect.getsource(models.UNET)
 
@@ -183,14 +207,14 @@ for epoch in range(EPOCHS):
         batch_x = batch_x.to(device).permute(0,2,1)
         batch_label = batch_y.to(device)
 
-        # t = torch.randint(0, T, (batch_x.shape[0],), device=device)
-        t = torch.ones((batch_x.shape[0],), dtype=torch.int32, device=device)*4000
+        t = torch.randint(0, T, (batch_x.shape[0],), device=device)
+        # t = torch.ones((batch_x.shape[0],), dtype=torch.int32, device=device)*4000
 
         batch_z_noisy, batch_noise = dfp.q_sample(batch_x,t)
 
         OPTIMIZER.zero_grad()
 
-        noise_hat = MODEL(batch_x, t)
+        noise_hat = MODEL(batch_z_noisy, t)
         noise_hat = noise_hat.squeeze()
 
         loss = CRITERION(noise_hat, batch_noise)

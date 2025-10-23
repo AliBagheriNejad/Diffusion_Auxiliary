@@ -15,6 +15,7 @@ import inspect
 
 import src.utils as utils
 import src.models as models
+import src.transformer as transformer
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -72,9 +73,17 @@ test_loader_of = utils.make_loader(
     bs = 8
 )
 
-model = models.UNETAE(2,2).to(device)
+model_params = {
+    'seq_len': 1024,
+    'd_model': 256,
+    'num_heads': 8, 
+    'num_layers': 1, # number of transformer layers
+    'd_ff': 256,
+}
+model = transformer.SignalTransformer(**model_params)
 model.save_path = 'temp/model_weight.pth'
-model.patience = 20
+model.patience = 10
+model.e_ratio = 100000
 
 config = []
 for p, n in model.named_parameters():
@@ -87,14 +96,14 @@ for p, n in model.named_parameters():
     config.append(con)
 
 
-description = 'try unet with full data'
+description = 'with transformer'
 
 # Training UNET (diffuxion model)
 # ==================================================
 MODE = 'diffusion'
 MODEL = model.to(device)
 EPOCHS = 200
-TRAIN_DATALOADER = train_loader
+TRAIN_DATALOADER = test_loader_of
 TEST_DATALOADER = test_loader
 OPTIMIZER = optim.Adam(MODEL.parameters(), lr=0.001)
 CRITERION = nn.MSELoss()
@@ -156,6 +165,7 @@ if mlflow.active_run():
 
 mlflow.start_run()
 mlflow.set_tag('dscr',description)
+mlflow.log_metrics(model_params)
 ## Save code
 source_code = inspect.getsource(models.UNET)
 
@@ -181,11 +191,12 @@ for epoch in range(EPOCHS):
 
         batch_x = batch_x.to(device).permute(0,2,1)
         batch_label = batch_y.to(device)
+        t = torch.randint(0, T, (batch_x.shape[0],), device=device)
 
 
         OPTIMIZER.zero_grad()
 
-        batch_hat = MODEL(batch_x, None)
+        batch_hat = MODEL(batch_x, t, True)
         batch_hat = batch_hat.squeeze()
 
         loss = CRITERION(batch_hat, batch_x)

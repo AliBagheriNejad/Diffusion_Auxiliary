@@ -196,9 +196,14 @@ class AuxNet(BaseModel):
 
 class DiffusionProcess:
 
-    def __init__(self, T, beta_start, beta_end):
-
-        self.beta = torch.linspace(beta_start, beta_end, T, device=device)
+    def __init__(self, T, beta_start, beta_end, beta_type = 'lin'):
+        
+        if beta_type == 'log':
+            self.beta = torch.logspace(beta_start, beta_end, T, device=device)
+        elif beta_type == 'lin':
+            beta_start = np.exp(beta_start)
+            beta_end = np.exp(beta_end)
+            self.beta = torch.linspace(beta_start, beta_end, T, device=device)
         self.alpha = 1 - self.beta
         self.alpha_cumprod = torch.cumprod(self.alpha, dim=0)
 
