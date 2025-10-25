@@ -86,7 +86,7 @@ class SignalTransformer(models.BaseModel):
         self.d_model = d_model
         
         # Input projection for 2 channels
-        self.input_projection = nn.Linear(2, d_model)
+        self.input_projection = nn.Linear(1, d_model)
         
         # Positional encoding for sequence dimension
         self.positional_encoding = nn.Parameter(torch.zeros(1, seq_len, d_model))
@@ -106,7 +106,7 @@ class SignalTransformer(models.BaseModel):
         ])
         
         # Output projection
-        self.output_projection = nn.Linear(d_model, 2)
+        self.output_projection = nn.Linear(d_model,1)
         
         # Initialize weights
         self._init_weights()
