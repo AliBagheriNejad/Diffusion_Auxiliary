@@ -73,21 +73,21 @@ test_loader_of = utils.make_loader(
     bs = 8
 )
 
-model_params = {
-    'seq_len': 1024,
-    'd_model': 256,
-    'num_heads': 4, 
-    'num_layers': 2, # number of transformer blocks++
-    'd_ff': 256,
-    'num_channels':1
-}
-model = transformer.SignalTransformer(**model_params)
-
 # model_params = {
-#     'in_channel_z': 1,
-#     'out_channel_z': 1
-# } 
-# model = models.UNETAE(**model_params)
+#     'seq_len': 1024,
+#     'd_model': 256,
+#     'num_heads': 4, 
+#     'num_layers': 2, # number of transformer blocks++
+#     'd_ff': 256,
+#     'num_channels':1
+# }
+# model = transformer.SignalTransformer(**model_params)
+
+model_params = {
+    'in_channel_z': 1,
+    'out_channel_z': 1
+} 
+model = models.UNETAE(**model_params)
 
 model.save_path = 'temp/model_weight.pth'
 model.patience = 10
@@ -205,8 +205,8 @@ for epoch in range(EPOCHS):
 
         OPTIMIZER.zero_grad()
 
-        batch_hat = MODEL(batch_z, t, True)
-        # batch_hat = MODEL(batch_z)
+        # batch_hat = MODEL(batch_z, t, True)
+        batch_hat = MODEL(batch_z)
         # batch_hat = batch_hat.squeeze()
 
         loss = CRITERION(batch_hat, batch_z)

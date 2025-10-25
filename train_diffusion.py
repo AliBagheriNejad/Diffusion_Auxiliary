@@ -73,21 +73,21 @@ test_loader_of = utils.make_loader(
     bs = 8
 )
 
-model_params = {
-    'seq_len': 1024,
-    'd_model': 256,
-    'num_heads': 4, 
-    'num_layers': 4, # number of transformer blocks
-    'd_ff': 256,
-    'num_channels':1
-}
-model = transformer.SignalTransformer(**model_params)
-
 # model_params = {
-#     'in_channel_z': 2,
-#     'out_channel_z': 2
-# } 
-# model = models.UNETAE(**model_params)
+#     'seq_len': 1024,
+#     'd_model': 256,
+#     'num_heads': 4, 
+#     'num_layers': 1, # number of transformer blocks
+#     'd_ff': 256,
+#     'num_channels':1
+# }
+# model = transformer.SignalTransformer(**model_params)
+
+model_params = {
+    'in_channel_z': 1,
+    'out_channel_z': 1
+} 
+model = models.UNETAE(**model_params)
 
 
 model.save_path = 'temp/model_weight.pth'
@@ -105,18 +105,19 @@ model.e_ratio = 100000
 #     config.append(con)
 
 
-description = 'try transformer with new config'
-run_name = 'Transformer (vital)'
+description = 'what to see if I can run with generation and make it work'
+run_name = 'trial and error'
 # Training UNET (diffuxion model)
 # ==================================================
 MODE = 'diffusion'
+MODEL_TYPE = 'UNET'
 MODEL = model
-EPOCHS = 20
+EPOCHS = 5
 TRAIN_DATALOADER = test_loader_of
 TEST_DATALOADER = test_loader
 OPTIMIZER = optim.Adam(model.parameters(), lr=0.0001)
 CRITERION = nn.MSELoss()
-EARLY_STOPPING = 'train_loss'
+EARLY_STOPPING = 'test_gen_loss'
 SHOW_GRAD = True
 T = 50
 EX_NAME = 'Diffusion model'
@@ -181,6 +182,7 @@ mlflow.start_run()
 mlflow.set_tag('desc', description)
 mlflow.set_tag('Time steps', T)
 mlflow.set_tag('mlflow.runName', run_name)
+mlflow.set_tag('arch type', MODEL_TYPE)
 mlflow.log_params(model_params)
 mlflow.log_params(dfp_params)
 ## Save code
@@ -202,7 +204,7 @@ for epoch in range(EPOCHS):
     test_loss = 0.0
     test_gen_loss = 0.0
 
-    progress_bar = tqdm.tqdm(enumerate(TRAIN_DATALOADER), total=len(TRAIN_DATALOADER), desc=f'Epoch {epoch + 1}/{EPOCHS}')
+    progress_bar = tqdm.tqdm(enumerate(TRAIN_DATALOADER), total=len(TRAIN_DATALOADER), desc=f'EPOCH {epoch + 1}/{EPOCHS}')
 
     for i,(batch_z, batch_x, batch_y) in progress_bar:
          
@@ -218,7 +220,7 @@ for epoch in range(EPOCHS):
         OPTIMIZER.zero_grad()
 
         noise_hat = MODEL(batch_z_noisy, t)
-        noise_hat = noise_hat.squeeze()
+        # noise_hat = noise_hat.squeeze()
 
         loss = CRITERION(noise_hat, batch_noise)
         loss.backward()
@@ -254,12 +256,76 @@ for epoch in range(EPOCHS):
     MODEL.eval()
 
     with torch.no_grad():
+        progress_bar_sample = tqdm.tqdm(enumerate(TRAIN_DATALOADER), total=len(TRAIN_DATALOADER), desc='train sampling')
+        for i,(batch_z, batch_x, _) in progress_bar_sample:
+            
+            batch_z = batch_z.to(device).unsqueeze(1)
+            batch_x = batch_x.to(device).permute(0,2,1)
+
+            batch_z_t = torch.randn_like(batch_z)
+            batch_z_t = batch_z_t.to(device)
+
+            for t in range(T-1,-1, -1):
+
+                t = torch.full((batch_z.shape[0],), t, device=device)
+
+                noise_hat = MODEL(batch_z_t, t)
+                # noise_hat = noise_hat.squeeze()
+
+                batch_z_t = dfp.p_sample(batch_z_t, t, noise_hat)
+
+            loss = CRITERION(batch_z_t, batch_z)
+            train_gen_loss += loss.cpu().detach().numpy()
+            progress_bar_sample.set_postfix_str(f'train_gen_loss={train_gen_loss / (i + 1):.4f}')
+
         train_gen_losses.append(train_gen_loss/len(TRAIN_DATALOADER))
 
         test_loss = 0.0
         test_gen_loss = 0.0
 
+        progress_bar_test = tqdm.tqdm(enumerate(TEST_DATALOADER), total=len(TEST_DATALOADER), desc=f'test set')
+
+        for i,(batch_z, batch_x, _) in progress_bar_test:
+            
+            batch_z = batch_z.to(device).unsqueeze(1)
+            batch_x = batch_x.to(device).permute(0,2,1)
+
+            t = torch.randint(0, T, (batch_z.shape[0],), device=device)
+
+            batch_z_noisy, batch_noise = dfp.q_sample(batch_z,t)
+
+            noise_hat = MODEL(batch_z_noisy, t)
+            # noise_hat = noise_hat.squeeze()
+
+            loss = CRITERION(noise_hat, batch_noise)
+
+            test_loss += loss.cpu().detach().numpy()
+            progress_bar_test.set_postfix_str(f'test_loss={test_loss / (i + 1):.4f}')
+        
         test_losses.append(test_loss/len(TEST_DATALOADER))
+
+
+        progress_bar_sample_test = tqdm.tqdm(enumerate(TEST_DATALOADER), total=len(TEST_DATALOADER), desc='test sampling')
+        for i,(batch_z, batch_x, _) in progress_bar_sample_test:
+            
+            batch_z = batch_z.to(device).unsqueeze(1)
+            batch_x = batch_x.to(device).permute(0,2,1)
+
+            batch_z_t = torch.randn_like(batch_z)
+            batch_z_t = batch_z_t.to(device)
+
+            for t in range(T-1,-1, -1):
+
+                t = torch.full((batch_z.shape[0],), t, device=device)
+
+                noise_hat = MODEL(batch_z_t, t)
+                # noise_hat = noise_hat.squeeze()
+
+                batch_z_t = dfp.p_sample(batch_z_t, t, noise_hat)
+
+            loss = CRITERION(batch_z_t, batch_z)
+            test_gen_loss += loss.cpu().detach().numpy()
+            progress_bar_sample_test.set_postfix_str(f'test_gen_loss={test_gen_loss / (i + 1):.4f}')
 
         test_gen_losses.append(test_gen_loss/len(TEST_DATALOADER))
 
