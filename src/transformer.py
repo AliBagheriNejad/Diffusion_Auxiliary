@@ -80,13 +80,13 @@ class TransformerBlock(nn.Module):
 
 class SignalTransformer(models.BaseModel):
     """Transformer-based denoising model for 2-channel signals"""
-    def __init__(self, seq_len=1024, d_model=256, num_heads=8, num_layers=6, d_ff=1024, dropout=0.1):
+    def __init__(self, seq_len=1024, d_model=256, num_heads=8, num_layers=6, d_ff=1024, num_channels=2, dropout=0.1):
         super(SignalTransformer, self).__init__()
         self.seq_len = seq_len
         self.d_model = d_model
         
         # Input projection for 2 channels
-        self.input_projection = nn.Linear(1, d_model)
+        self.input_projection = nn.Linear(num_channels, d_model)
         
         # Positional encoding for sequence dimension
         self.positional_encoding = nn.Parameter(torch.zeros(1, seq_len, d_model))
@@ -106,7 +106,7 @@ class SignalTransformer(models.BaseModel):
         ])
         
         # Output projection
-        self.output_projection = nn.Linear(d_model,1)
+        self.output_projection = nn.Linear(d_model, num_channels)
         
         # Initialize weights
         self._init_weights()

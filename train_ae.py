@@ -76,11 +76,19 @@ test_loader_of = utils.make_loader(
 model_params = {
     'seq_len': 1024,
     'd_model': 256,
-    'num_heads': 8, 
-    'num_layers': 1, # number of transformer layers
+    'num_heads': 4, 
+    'num_layers': 2, # number of transformer blocks++
     'd_ff': 256,
+    'num_channels':1
 }
 model = transformer.SignalTransformer(**model_params)
+
+# model_params = {
+#     'in_channel_z': 1,
+#     'out_channel_z': 1
+# } 
+# model = models.UNETAE(**model_params)
+
 model.save_path = 'temp/model_weight.pth'
 model.patience = 10
 model.e_ratio = 100000
@@ -89,23 +97,23 @@ config = []
 for p, n in model.named_parameters():
 
     if 'conv1' in p:
-        con = {'params': n, 'lr':0.001}
+        con = {'params': n, 'lr':0.1}
     else:
-        con = {'params': n, 'lr':0.001}
+        con = {'params': n, 'lr':0.1}
 
     config.append(con)
 
 
-description = 'with transformer'
+description = 'compare transformer layer difference for z generation'
 
 # Training UNET (diffuxion model)
 # ==================================================
 MODE = 'diffusion'
 MODEL = model.to(device)
-EPOCHS = 200
+EPOCHS = 50
 TRAIN_DATALOADER = test_loader_of
 TEST_DATALOADER = test_loader
-OPTIMIZER = optim.Adam(MODEL.parameters(), lr=0.001)
+OPTIMIZER = optim.Adam(MODEL.parameters(), lr=0.01)
 CRITERION = nn.MSELoss()
 EARLY_STOPPING = 'train_loss'
 SHOW_GRAD = True
@@ -187,19 +195,21 @@ for epoch in range(EPOCHS):
 
     progress_bar = tqdm.tqdm(enumerate(TRAIN_DATALOADER), total=len(TRAIN_DATALOADER), desc=f'Epoch {epoch + 1}/{EPOCHS}')
 
-    for i,(_, batch_x, batch_y) in progress_bar:
+    for i,(batch_z, batch_x, batch_y) in progress_bar:
 
+        batch_z = batch_z.unsqueeze(1).to(device)
         batch_x = batch_x.to(device).permute(0,2,1)
         batch_label = batch_y.to(device)
-        t = torch.randint(0, T, (batch_x.shape[0],), device=device)
+        t = torch.randint(0, T, (batch_z.shape[0],), device=device)
 
 
         OPTIMIZER.zero_grad()
 
-        batch_hat = MODEL(batch_x, t, True)
-        batch_hat = batch_hat.squeeze()
+        batch_hat = MODEL(batch_z, t, True)
+        # batch_hat = MODEL(batch_z)
+        # batch_hat = batch_hat.squeeze()
 
-        loss = CRITERION(batch_hat, batch_x)
+        loss = CRITERION(batch_hat, batch_z)
         loss.backward()
         OPTIMIZER.step()
 
