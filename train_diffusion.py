@@ -81,18 +81,18 @@ test_loader_of = utils.make_loader(
 #     'd_ff': 256,
 #     'num_channels':1
 # }
-# model = transformer.SignalTransformer(**model_params)
+# model = transformer.SignalTransformer(**model_params).to(device)
 
 model_params = {
     'in_channel_z': 1,
     'out_channel_z': 1
 } 
-model = models.UNETAE(**model_params)
+model = models.UNETAE(**model_params).to(device)
 
 
 model.save_path = 'temp/model_weight.pth'
 model.patience = 10
-model.e_ratio = 100000
+model.e_ratio = 10000
 
 # config = []
 # for p, n in model.named_parameters():
@@ -111,7 +111,7 @@ run_name = 'trial and error'
 # ==================================================
 MODE = 'diffusion'
 MODEL_TYPE = 'UNET'
-MODEL = model
+MODEL = model.to(device)
 EPOCHS = 5
 TRAIN_DATALOADER = test_loader_of
 TEST_DATALOADER = test_loader

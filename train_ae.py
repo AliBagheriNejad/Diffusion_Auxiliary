@@ -73,21 +73,21 @@ test_loader_of = utils.make_loader(
     bs = 8
 )
 
-# model_params = {
-#     'seq_len': 1024,
-#     'd_model': 256,
-#     'num_heads': 4, 
-#     'num_layers': 2, # number of transformer blocks++
-#     'd_ff': 256,
-#     'num_channels':1
-# }
-# model = transformer.SignalTransformer(**model_params)
-
 model_params = {
-    'in_channel_z': 1,
-    'out_channel_z': 1
-} 
-model = models.UNETAE(**model_params)
+    'seq_len': 1024,
+    'd_model': 256,
+    'num_heads': 16, 
+    'num_layers': 1, # number of transformer blocks++
+    'd_ff': 256,
+    'num_channels':1
+}
+model = transformer.SignalTransformer(**model_params)
+
+# model_params = {
+#     'in_channel_z': 1,
+#     'out_channel_z': 1
+# } 
+# model = models.UNETAE(**model_params)
 
 model.save_path = 'temp/model_weight.pth'
 model.patience = 10
@@ -104,7 +104,7 @@ for p, n in model.named_parameters():
     config.append(con)
 
 
-description = 'compare transformer layer difference for z generation'
+description = 'testig bigger models'
 
 # Training UNET (diffuxion model)
 # ==================================================
@@ -115,10 +115,10 @@ TRAIN_DATALOADER = test_loader_of
 TEST_DATALOADER = test_loader
 OPTIMIZER = optim.Adam(MODEL.parameters(), lr=0.01)
 CRITERION = nn.MSELoss()
-EARLY_STOPPING = 'train_loss'
+EARLY_STOPPING = 'test_loss'
 SHOW_GRAD = True
 T = 50
-EX_NAME = 'Unet AE'
+EX_NAME = 'AutoEncoder'
 
 MODEL.to(device)
 
@@ -175,7 +175,7 @@ mlflow.start_run()
 mlflow.set_tag('dscr',description)
 mlflow.log_metrics(model_params)
 ## Save code
-source_code = inspect.getsource(models.UNET)
+source_code = inspect.getsource(models.UNETAE)
 
 # Create a temporary file to store the source code
 temp_code_file = "temp/model_definition.txt"
@@ -205,8 +205,8 @@ for epoch in range(EPOCHS):
 
         OPTIMIZER.zero_grad()
 
-        # batch_hat = MODEL(batch_z, t, True)
-        batch_hat = MODEL(batch_z)
+        batch_hat = MODEL(batch_z, t, True)
+        # batch_hat = MODEL(batch_z)
         # batch_hat = batch_hat.squeeze()
 
         loss = CRITERION(batch_hat, batch_z)
@@ -248,6 +248,23 @@ for epoch in range(EPOCHS):
         test_loss = 0.0
         test_gen_loss = 0.0
 
+        progress_bar_test = tqdm.tqdm(enumerate(TEST_DATALOADER), total=len(TEST_DATALOADER), desc=f'test set')
+
+        for i,(batch_z, batch_x, _) in progress_bar_test:
+            
+            batch_z = batch_z.to(device).unsqueeze(1)
+            batch_x = batch_x.to(device).permute(0,2,1)
+            t = torch.randint(0, T, (batch_z.shape[0],), device=device)
+
+            noise_hat = MODEL(batch_z, t, True)
+            # noise_hat = MODEL(batch_z)
+            # noise_hat = noise_hat.squeeze()
+
+            loss = CRITERION(noise_hat, batch_z)
+
+            test_loss += loss.cpu().detach().numpy()
+            progress_bar_test.set_postfix_str(f'test_loss={test_loss / (i + 1):.4f}')
+        
         test_losses.append(test_loss/len(TEST_DATALOADER))
 
         test_gen_losses.append(test_gen_loss/len(TEST_DATALOADER))
