@@ -501,7 +501,7 @@ class UNETAE(BaseModel):
         i = 2
         self.d1_z = Down(in_channel_z, 64, mp=4) # 1024
         self.d2_z = Down(64, 128) # 256
-        self.d2_z_0 = Down(64*2, 128*i) # 256
+        self.d2_z_0 = Down(64*i, 128*i) # 256
         self.d3_z = Down(128*i, 256*i) # 64
         self.d4_z = Down(256*i, 512*i) # 32
 
@@ -511,15 +511,13 @@ class UNETAE(BaseModel):
         # self.u4_z = Up(1024,512,ch_d=2)
         self.u4_z = Up(1024*i,512*i,ch_d=2)
         self.u3_z = Up(512*i,256*i,ch_d=2)
-        self.u2_z_0 = Up(256*i,128*2, ch_d=2)
+        self.u2_z_0 = Up(256*i,128*i, ch_d=2)
         self.u2_z = Up(256,128, ch_d=2)
         self.u1_z = Up(128,128, us=4,ch_d=2)
 
-        self.f1 = ConvEmbed(128,128) #skip it
+        self.f1 = ConvEmbed(128,128)
 
         self.f2 = ConvEmbed(128,128)
-        self.f20 = ConvEmbed(128,128)
-        self.f21 = ConvEmbed(128,128)
 
         self.f3 = ConvEmbed(128,64)
 
@@ -547,8 +545,6 @@ class UNETAE(BaseModel):
 
             x = self.f1(x1_u)
             x = self.f2(x)
-            x = self.f20(x)
-            x = self.f21(x)
             x = self.f3(x)
             x = self.conv1(x)
         else:
@@ -559,8 +555,13 @@ class UNETAE(BaseModel):
             x2, x2_d = self.d2_z(x1_d)
             x2 = x2 + sinusoidal_embedding(t, x2.shape[2]).unsqueeze(1)
             x2_d = x2_d + sinusoidal_embedding(t, x2_d.shape[2]).unsqueeze(1)
+
+
+            x2_0, x2_d_0 = self.d2_z_0(x2_d)
+            x2_0 = x2_0 + sinusoidal_embedding(t, x2_0.shape[2]).unsqueeze(1)
+            x2_d_0 = x2_d_0 + sinusoidal_embedding(t, x2_d_0.shape[2]).unsqueeze(1)
             
-            x3, x3_d = self.d3_z(x2_d)
+            x3, x3_d = self.d3_z(x2_d_0)
             x3 = x3 + sinusoidal_embedding(t, x3.shape[2]).unsqueeze(1)
             x3_d = x3_d + sinusoidal_embedding(t, x3_d.shape[2]).unsqueeze(1)
             
@@ -579,7 +580,11 @@ class UNETAE(BaseModel):
             x3_u = self.u3_z(x4_u,x3)
             x3_u = x3_u + sinusoidal_embedding(t,x3_u.shape[2]).unsqueeze(1)
 
-            x2_u = self.u2_z(x3_u,x2)
+
+            x2_u_0 = self.u2_z_0(x3_u,x2_0)
+            x2_u_0 = x2_u_0 + sinusoidal_embedding(t,x2_u_0.shape[2]).unsqueeze(1)
+
+            x2_u = self.u2_z(x2_u_0,x2)
             x2_u = x2_u + sinusoidal_embedding(t,x2_u.shape[2]).unsqueeze(1)
 
             x1_u = self.u1_z(x2_u,x1)
@@ -587,12 +592,12 @@ class UNETAE(BaseModel):
 
             x = self.f1(x1_u)
             x = self.f2(x)
+            x = self.f3(x)
             x = self.conv1(x)
 
         
 
         return x
-
 
 class FEBased(BaseModel):
     def __init__(self, drop=0.1, input_channels=1):
