@@ -391,7 +391,7 @@ class UNET(BaseModel):
 
         
 
-    def forward(self,x,z,t):
+    def forward(self,z,x,t):
 
         x = x + sinusoidal_embedding(t, x.shape[2]).unsqueeze(1)
         z = z + sinusoidal_embedding(t, z.shape[2]).unsqueeze(1)

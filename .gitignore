@@ -8,3 +8,5 @@ time step embedding.txt
 *.ph
 *.json
 mlruns
+mlruns2
+weights
