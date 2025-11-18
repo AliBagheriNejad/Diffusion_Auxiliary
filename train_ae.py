@@ -73,25 +73,29 @@ test_loader_of = utils.make_loader(
     bs = 8
 )
 
-model_params = {
-    'seq_len': 1024,
-    'd_model': 256,
-    'num_heads': 16, 
-    'num_layers': 1, # number of transformer blocks++
-    'd_ff': 256,
-    'num_channels':1
-}
-model = transformer.SignalTransformer(**model_params)
-
 # model_params = {
-#     'in_channel_z': 1,
-#     'out_channel_z': 1
-# } 
-# model = models.UNETAE(**model_params)
+#     'seq_len': 1024,
+#     'd_model': 256,
+#     'num_heads': 16, 
+#     'num_layers': 1, # number of transformer blocks++
+#     'd_ff': 256,
+#     'num_channels':1
+# }
+# model = transformer.SignalTransformer(**model_params)
+
+model_params = {
+    'in_channel_z': 2,
+    'out_channel_z': 1
+} 
+model = models.UNETAE(**model_params)
+
+
+# weight_dir = r'F:/thesis/Articles/2nd/diffusion/mlruns/849254562878161049/8d74a03849d84a058eec736bde2bb91e/artifacts/artifacts/model_weight.pth'
+# model = torch.load(weight_dir, weights_only=False)
 
 model.save_path = 'temp/model_weight.pth'
-model.patience = 10
-model.e_ratio = 100000
+model.patience = 200
+model.e_ratio = 1000
 
 config = []
 for p, n in model.named_parameters():
@@ -104,15 +108,15 @@ for p, n in model.named_parameters():
     config.append(con)
 
 
-description = 'testig bigger models'
+description = 'testig X -> Z_a (to be continued ... )'
 
 # Training UNET (diffuxion model)
 # ==================================================
 MODE = 'diffusion'
 MODEL = model.to(device)
-EPOCHS = 50
+EPOCHS = 200
 TRAIN_DATALOADER = test_loader_of
-TEST_DATALOADER = test_loader
+TEST_DATALOADER = test_loader_of
 OPTIMIZER = optim.Adam(MODEL.parameters(), lr=0.01)
 CRITERION = nn.MSELoss()
 EARLY_STOPPING = 'test_loss'
@@ -200,13 +204,13 @@ for epoch in range(EPOCHS):
         batch_z = batch_z.unsqueeze(1).to(device)
         batch_x = batch_x.to(device).permute(0,2,1)
         batch_label = batch_y.to(device)
-        t = torch.randint(0, T, (batch_z.shape[0],), device=device)
+        t = torch.randint(0, T, (batch_x.shape[0],), device=device)
 
 
         OPTIMIZER.zero_grad()
 
-        batch_hat = MODEL(batch_z, t, True)
-        # batch_hat = MODEL(batch_z)
+        # batch_hat = MODEL(batch_x, t, True)
+        batch_hat = MODEL(batch_x)
         # batch_hat = batch_hat.squeeze()
 
         loss = CRITERION(batch_hat, batch_z)
@@ -256,8 +260,8 @@ for epoch in range(EPOCHS):
             batch_x = batch_x.to(device).permute(0,2,1)
             t = torch.randint(0, T, (batch_z.shape[0],), device=device)
 
-            noise_hat = MODEL(batch_z, t, True)
-            # noise_hat = MODEL(batch_z)
+            # noise_hat = MODEL(batch_z, t, True)
+            noise_hat = MODEL(batch_x)
             # noise_hat = noise_hat.squeeze()
 
             loss = CRITERION(noise_hat, batch_z)

@@ -53,7 +53,7 @@ class BaseModel(nn.Module):
             self.current_patience = 0
 
             # Save the model's weights
-            torch.save(self.state_dict(), self.save_path)
+            torch.save(self, self.save_path)
             print("<<<<<<<  !Model saved!  >>>>>>>")
             return False
         else:
@@ -356,32 +356,33 @@ class UNET(BaseModel):
     ):
         super().__init__()
 
+        i = 1
         self.d1_z = Down(in_channel_z, 64, mp=4) # 1024
-        self.d2_z = Down(64, 128, mp=4) # 256
-        self.d3_z = Down(128, 256) # 64
-        self.d4_z = Down(256, 512) # 32
+        self.d2_z = Down(64*2, 128, mp=4) # 256
+        self.d3_z = Down(128*2, 256) # 64
+        self.d4_z = Down(256*2, 512) # 32
 
         self.d1_x = Down(in_channel_x, 64, mp=4)
         self.d2_x = Down(64, 128, mp = 4)
         self.d3_x = Down(128, 256)
         self.d4_x = Down(256, 512)
 
-        self.kz_0 = ConvEmbed(512, 1024)
-        self.kx_0 = ConvEmbed(1024, 2048)
-        self.kz = ConvEmbed(1024, 1024)
-        self.kx = ConvEmbed(2048, 1024)
+        # self.kz_0 = ConvEmbed(512*2, 1024*2)
+        self.kx_0 = ConvEmbed(1536, 2048)
+        # self.kz = ConvEmbed(1024*2, 2048)
+        self.kx = ConvEmbed(2048, 2048)
 
         # self.u4_z = Up(1024,512,ch_d=2)
-        self.u3_z = Up(1024,512,ch_d=2)
-        self.u2_z = Up(512,256,ch_d=2)
-        self.u1_z = Up(256,128, us=4,ch_d=2)
-        self.u0_z = Up(128,64, us=4,ch_d=2)
+        self.u3_z = Up(1024*2,512*2,ch_d=2)
+        self.u2_z = Up(512*2,256*2,ch_d=2)
+        self.u1_z = Up(256*2,128*2, us=4,ch_d=2)
+        self.u0_z = Up(128*2,64*2, us=4,ch_d=2)
 
         # self.u4_x = Up(2048,512,ch_d=4)
-        self.u3_x = Up(1024,512,ch_d=2)
-        self.u2_x = Up(512,256,ch_d=2)
-        self.u1_x = Up(256,128, us=4,ch_d=2)
-        self.u0_x = Up(128,64, us=4,ch_d=2)
+        # self.u3_x = Up(1024,512,ch_d=2)
+        # self.u2_x = Up(512,256,ch_d=2)
+        # self.u1_x = Up(256,128, us=4,ch_d=2)
+        # self.u0_x = Up(128,64, us=4,ch_d=2)
 
         self.f1 = ConvEmbed(128,64)
 
@@ -391,93 +392,110 @@ class UNET(BaseModel):
 
         
 
-    def forward(self,z,x,t):
-
-        x = x + sinusoidal_embedding(t, x.shape[2]).unsqueeze(1)
-        z = z + sinusoidal_embedding(t, z.shape[2]).unsqueeze(1)
-        # Downsampling Z
-        z1, z1_d = self.d1_z(z)
-        # z1 = z1 + sinusoidal_embedding(t, z1.shape[2]).unsqueeze(1)
-        # z1_d = z1_d + sinusoidal_embedding(t, z1_d.shape[2]).unsqueeze(1)
-
-        z2, z2_d = self.d2_z(z1_d)
-        z2 = z2 + sinusoidal_embedding(t, z2.shape[2]).unsqueeze(1)
-        z2_d = z2_d + sinusoidal_embedding(t, z2_d.shape[2]).unsqueeze(1)
-
-        z3, z3_d = self.d3_z(z2_d)
-        # z3 = z3 + sinusoidal_embedding(t, z3.shape[2]).unsqueeze(1)
-        # z3_d = z3_d + sinusoidal_embedding(t, z3_d.shape[2]).unsqueeze(1)
-
-        z4, z4_d = self.d4_z(z3_d)
-        z4 = z4 + sinusoidal_embedding(t, z4.shape[2]).unsqueeze(1)
-        z4_d = z4_d + sinusoidal_embedding(t, z4_d.shape[2]).unsqueeze(1)
-
-        # Downsampilng X
-        x1, x1_d = self.d1_x(x)
-        # x1 = x1 + sinusoidal_embedding(t, x1.shape[2]).unsqueeze(1)
-        # x1_d = x1_d + sinusoidal_embedding(t, x1_d.shape[2]).unsqueeze(1)
-
-        x2, x2_d = self.d2_x(x1_d)
-        x2 = x2 + sinusoidal_embedding(t, x2.shape[2]).unsqueeze(1)
-        x2_d = x2_d + sinusoidal_embedding(t, x2_d.shape[2]).unsqueeze(1)
-
-        x3, x3_d = self.d3_x(x2_d)
-        # x3 = x3 + sinusoidal_embedding(t, x3.shape[2]).unsqueeze(1)
-        # x3_d = x3_d + sinusoidal_embedding(t, x3_d.shape[2]). unsqueeze(1)
+    def forward(self,z,x,t=None):
         
-        x4, x4_d = self.d4_x(x3_d)
-        x4 = x4 + sinusoidal_embedding(t, x4.shape[2]).unsqueeze(1)
-        x4_d = x4_d + sinusoidal_embedding(t, x4_d.shape[2]). unsqueeze(1) # x5_d = x5_d + sinusoidal_embedding(t, x5_d.shape[2]). unsqueeze(1)              
-        # Concat Low
-        z5 = z4_d
-        x5 = torch.concat([x4_d, z5], dim=1)
+        if t is not None:
+            x = x + sinusoidal_embedding(t, x.shape[2]).unsqueeze(1)
+            z = z + sinusoidal_embedding(t, z.shape[2]).unsqueeze(1)
+            # Downsampling Z
+            z1, z1_d = self.d1_z(z)
+            z1 = z1 + sinusoidal_embedding(t, z1.shape[2]).unsqueeze(1)
+            z1_d = z1_d + sinusoidal_embedding(t, z1_d.shape[2]).unsqueeze(1)
+            x1, x1_d = self.d1_x(x)
+            x1 = x1 + sinusoidal_embedding(t, x1.shape[2]).unsqueeze(1)
+            x1_d = x1_d + sinusoidal_embedding(t, x1_d.shape[2]).unsqueeze(1)
 
-        # Process Low
-        z5 = self.kz_0(z5)
-        x5 = self.kx_0(x5)
+            z1      = torch.concat([z1,x1],dim=1)
+            z1_d    = torch.concat([z1_d,x1_d],dim=1)
 
-        z7 = self.kz(z5)
-        z7 = z7 + sinusoidal_embedding(t, z7.shape[2]).unsqueeze(1)
-        x7 = self.kx(x5)
-        x7 = x7 + sinusoidal_embedding(t, x7.shape[2]).unsqueeze(1)
+            z2, z2_d = self.d2_z(z1_d)
+            z2 = z2 + sinusoidal_embedding(t, z2.shape[2]).unsqueeze(1)
+            z2_d = z2_d + sinusoidal_embedding(t, z2_d.shape[2]).unsqueeze(1)
+            x2, x2_d = self.d2_x(x1_d)
+            x2 = x2 + sinusoidal_embedding(t, x2.shape[2]).unsqueeze(1)
+            x2_d = x2_d + sinusoidal_embedding(t, x2_d.shape[2]).unsqueeze(1)
 
-        # Upsampling Z
-        # z4_u = self.u4_z(z7, None)
-        # z4_u = z4_u + sinusoidal_embedding(t, z4_u.shape[2]).unsqueeze(1)
+            z2      = torch.concat([z2,x2],dim=1)
+            z2_d    = torch.concat([z2_d,x2_d],dim=1)
 
-        z3_u = self.u3_z(z7, z4)
-        z3_u = z3_u + sinusoidal_embedding(t, z3_u.shape[2]).unsqueeze(1)
+            z3, z3_d = self.d3_z(z2_d)
+            z3 = z3 + sinusoidal_embedding(t, z3.shape[2]).unsqueeze(1)
+            z3_d = z3_d + sinusoidal_embedding(t, z3_d.shape[2]).unsqueeze(1)
+            x3, x3_d = self.d3_x(x2_d)
+            x3 = x3 + sinusoidal_embedding(t, x3.shape[2]).unsqueeze(1)
+            x3_d = x3_d + sinusoidal_embedding(t, x3_d.shape[2]). unsqueeze(1)
 
-        z2_u = self.u2_z(z3_u, z3)
-        # z2_u = z2_u + sinusoidal_embedding(t, z2_u.shape[2]).unsqueeze(1)
+            z3      = torch.concat([z3,x3],dim=1)
+            z3_d    = torch.concat([z3_d,x3_d],dim=1)
 
-        z1_u = self.u1_z(z2_u, z2)
-        z1_u = z1_u + sinusoidal_embedding(t, z1_u.shape[2]).unsqueeze(1) 
+            z4, z4_d = self.d4_z(z3_d)
+            z4 = z4 + sinusoidal_embedding(t, z4.shape[2]).unsqueeze(1)
+            z4_d = z4_d + sinusoidal_embedding(t, z4_d.shape[2]).unsqueeze(1)
+            x4, x4_d = self.d4_x(x3_d)
+            x4 = x4 + sinusoidal_embedding(t, x4.shape[2]).unsqueeze(1)
+            x4_d = x4_d + sinusoidal_embedding(t, x4_d.shape[2]). unsqueeze(1) # x5_d = x5_d + sinusoidal_embedding(t, x5_d.shape[2]). unsqueeze(1)              
+
+            z4      = torch.concat([z4,x4],dim=1)
+            z4_d    = torch.concat([z4_d,x4_d],dim=1)
+
+            # Downsampilng X
 
 
-        z0_u = self.u0_z(z1_u, z1)
-        z0_u = z0_u + sinusoidal_embedding(t, z0_u.shape[2]).unsqueeze(1) 
+            
+            # Concat Low
+            z5 = z4_d
+            x5 = torch.concat([x4_d, z5], dim=1)
+
+            # Process Low
+            # z5 = self.kz_0(z5)
+            x5 = self.kx_0(x5)
+
+            # z7 = self.kz(z5)
+            # z7 = z7 + sinusoidal_embedding(t, z7.shape[2]).unsqueeze(1)
+            x7 = self.kx(x5)
+            x7 = x7 + sinusoidal_embedding(t, x7.shape[2]).unsqueeze(1)
+
+            # Upsampling Z
+            # z4_u = self.u4_z(z7, None)
+            # z4_u = z4_u + sinusoidal_embedding(t, z4_u.shape[2]).unsqueeze(1)
+
+            z3_u = self.u3_z(x7, z4)
+            z3_u = z3_u + sinusoidal_embedding(t, z3_u.shape[2]).unsqueeze(1)
+
+            z2_u = self.u2_z(z3_u, z3)
+            z2_u = z2_u + sinusoidal_embedding(t, z2_u.shape[2]).unsqueeze(1)
+
+            z1_u = self.u1_z(z2_u, z2)
+            z1_u = z1_u + sinusoidal_embedding(t, z1_u.shape[2]).unsqueeze(1) 
 
 
-        # Upsampling X
-        # x4_u = self.u4_x(x7, x4)
-        # x4_u = x4_u + sinusoidal_embedding(t, x4_u.shape[2]).unsqueeze(1)
+            z0_u = self.u0_z(z1_u, z1)
+            z0_u = z0_u + sinusoidal_embedding(t, z0_u.shape[2]).unsqueeze(1) 
 
-        x3_u = self.u3_x(x7, x4)
-        x3_u = x3_u + sinusoidal_embedding(t, x3_u.shape[2]).unsqueeze(1)
 
-        x2_u = self.u2_x(x3_u, x3)
-        # x2_u = x2_u + sinusoidal_embedding(t, x2_u.shape[2]).unsqueeze(1)
+            # Upsampling X
+            # x4_u = self.u4_x(x7, x4)
+            # x4_u = x4_u + sinusoidal_embedding(t, x4_u.shape[2]).unsqueeze(1)
 
-        x1_u = self.u1_x(x2_u, x2)
-        x1_u = x1_u + sinusoidal_embedding(t, x1_u.shape[2]).unsqueeze(1)
+            # x3_u = self.u3_x(x7, x4)
+            # x3_u = x3_u + sinusoidal_embedding(t, x3_u.shape[2]).unsqueeze(1)
 
-        x0_u = self.u0_x(x1_u, x1)
-        x0_u = x0_u + sinusoidal_embedding(t, x0_u.shape[2]).unsqueeze(1)
+            # x2_u = self.u2_x(x3_u, x3)
+            # x2_u = x2_u + sinusoidal_embedding(t, x2_u.shape[2]).unsqueeze(1)
 
-        # Concat High
-        z_f = torch.concat([z0_u, x0_u], dim=1)
-        # z_f = z_f + sinusoidal_embedding(t, z_f.shape[2]).unsqueeze(1)
+            # x1_u = self.u1_x(x2_u, x2)
+            # x1_u = x1_u + sinusoidal_embedding(t, x1_u.shape[2]).unsqueeze(1)
+
+            # x0_u = self.u0_x(x1_u, x1)
+            # x0_u = x0_u + sinusoidal_embedding(t, x0_u.shape[2]).unsqueeze(1)
+
+            # Concat High
+            # z_f = torch.concat([z0_u, x0_u], dim=1)
+            z_f = z0_u
+            z_f = z_f + sinusoidal_embedding(t, z_f.shape[2]).unsqueeze(1)
+
+        else:
+            z_f = self.forward_no_t(z,x)
 
         # B_3ranck Processing
         z_f = self.f1(z_f)
@@ -488,6 +506,85 @@ class UNET(BaseModel):
 
         return z_f
 
+    def forward_no_t(self,z,x):
+
+        x = x 
+        z = z 
+        # Downsampling Z
+        z1, z1_d = self.d1_z(z)
+        x1, x1_d = self.d1_x(x)
+
+        z1      = torch.concat([z1,x1],dim=1)
+        z1_d    = torch.concat([z1_d,x1_d],dim=1)
+
+        z2, z2_d = self.d2_z(z1_d)
+        x2, x2_d = self.d2_x(x1_d)
+
+        z2      = torch.concat([z2,x2],dim=1)
+        z2_d    = torch.concat([z2_d,x2_d],dim=1)
+
+        z3, z3_d = self.d3_z(z2_d)
+        x3, x3_d = self.d3_x(x2_d)
+
+        z3      = torch.concat([z3,x3],dim=1)
+        z3_d    = torch.concat([z3_d,x3_d],dim=1)
+
+        z4, z4_d = self.d4_z(z3_d)
+        x4, x4_d = self.d4_x(x3_d) # x5_d = x5_d + sinusoidal_embedding(t, x5_d.shape[2]). unsqueeze(1)              
+
+        z4      = torch.concat([z4,x4],dim=1)
+        z4_d    = torch.concat([z4_d,x4_d],dim=1)
+
+        # Downsampilng X
+
+
+        
+        # Concat Low
+        z5 = z4_d
+        x5 = torch.concat([x4_d, z5], dim=1)
+
+        # Process Low
+        # z5 = self.kz_0(z5)
+        x5 = self.kx_0(x5)
+
+        # z7 = self.kz(z5)
+        # z7 = z7 + sinusoidal_embedding(t, z7.shape[2]).unsqueeze(1)
+        x7 = self.kx(x5)
+
+        # Upsampling Z
+        # z4_u = self.u4_z(z7, None)
+        # z4_u = z4_u + sinusoidal_embedding(t, z4_u.shape[2]).unsqueeze(1)
+
+        z3_u = self.u3_z(x7, z4)
+
+        z2_u = self.u2_z(z3_u, z3)
+
+        z1_u = self.u1_z(z2_u, z2)
+
+
+        z0_u = self.u0_z(z1_u, z1)
+
+
+        # Upsampling X
+        # x4_u = self.u4_x(x7, x4)
+        # x4_u = x4_u + sinusoidal_embedding(t, x4_u.shape[2]).unsqueeze(1)
+
+        # x3_u = self.u3_x(x7, x4)
+        # x3_u = x3_u + sinusoidal_embedding(t, x3_u.shape[2]).unsqueeze(1)
+
+        # x2_u = self.u2_x(x3_u, x3)
+        # x2_u = x2_u + sinusoidal_embedding(t, x2_u.shape[2]).unsqueeze(1)
+
+        # x1_u = self.u1_x(x2_u, x2)
+        # x1_u = x1_u + sinusoidal_embedding(t, x1_u.shape[2]).unsqueeze(1)
+
+        # x0_u = self.u0_x(x1_u, x1)
+        # x0_u = x0_u + sinusoidal_embedding(t, x0_u.shape[2]).unsqueeze(1)
+
+        # Concat High
+        # z_f = torch.concat([z0_u, x0_u], dim=1)
+        z_f = z0_u
+        return z_f
 
 class UNETAE(BaseModel): 
 
@@ -498,9 +595,9 @@ class UNETAE(BaseModel):
     ):
         super().__init__()
 
-        i = 2
+        i = 1
         self.d1_z = Down(in_channel_z, 64, mp=4) # 1024
-        self.d2_z = Down(64, 128) # 256
+        self.d2_z = Down(64, 64*i) # 256
         self.d2_z_0 = Down(64*i, 128*i) # 256
         self.d3_z = Down(128*i, 256*i) # 64
         self.d4_z = Down(256*i, 512*i) # 32
@@ -512,7 +609,7 @@ class UNETAE(BaseModel):
         self.u4_z = Up(1024*i,512*i,ch_d=2)
         self.u3_z = Up(512*i,256*i,ch_d=2)
         self.u2_z_0 = Up(256*i,128*i, ch_d=2)
-        self.u2_z = Up(256,128, ch_d=2)
+        self.u2_z = Up(128*i,128, ch_d=2)
         self.u1_z = Up(128,128, us=4,ch_d=2)
 
         self.f1 = ConvEmbed(128,128)
