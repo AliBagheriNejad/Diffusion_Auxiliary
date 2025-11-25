@@ -187,7 +187,7 @@ class AuxNet(BaseModel):
         self.model = nn.Sequential(*layers)
 
         
-        self.label_coder = lambda y:F.one_hot(y, num_classes=num_classes)
+        # self.label_coder = lambda y:F.one_hot(y, num_classes=num_classes)
         self.include_y = include_y
 
 
