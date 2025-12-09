@@ -21,8 +21,8 @@ X_test_scaled_tensor = utils.read_pkl('Data/1024/features_test.pkl')
 y_train_tensor = utils.read_pkl('Data/1024/label_train.pkl')
 y_test_tensor = utils.read_pkl('Data/1024/label_test.pkl')
 
-train_loader = utils.make_loader(X_train_scaled_tensor,y_train_tensor, 128)
-test_loader = utils.make_loader(X_test_scaled_tensor,y_test_tensor, 128)
+train_loader = utils.make_loader(X_train_scaled_tensor,y_train_tensor, bs=128)
+test_loader = utils.make_loader(X_test_scaled_tensor,y_test_tensor, bs=128)
 
 
 # Load models

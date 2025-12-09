@@ -283,7 +283,7 @@ with mlflow.start_run(run_name=run_name) as run:
 
                 loss = CRITERION(outputs, batch_label)
 
-                train_loss += loss.item()
+                test_loss += loss.item()
                 _, predicted = torch.max(outputs, 1)
                 total_test += batch_label.size(0)
                 correct_train += (predicted == batch_label).sum().item()

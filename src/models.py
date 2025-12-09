@@ -149,9 +149,9 @@ class Network(BaseModel):
 
     def forward(self, x):
         if self.in_ch == 1:
-            x = x.view(x.shape[0], 1, x.shape[1])  # Reshape input to (batch_size, channels, length)
+            x = x.unsqueeze(1)  # Reshape input to (batch_size, channels, length)
         else:
-            x = x.view(x.shape[0], x.shape[2], x.shape[1])
+            x = x.permute(0,2,1)
         features = self.feature_extractor(x)
         x = self.classifier(features)
 
