@@ -123,9 +123,9 @@ class TransformerBlock(nn.Module):
         attn_output = self.attention(x, mask)
         x = x + self.dropout(attn_output)
 
-        x = self.norm3(x)
-        cross_attn_output = self.cross_attention(x, c, mask)
-        x = x + self.dropout(cross_attn_output)
+        # x = self.norm3(x)
+        # cross_attn_output = self.cross_attention(x, c, mask)
+        # x = x + self.dropout(cross_attn_output)
 
         x = self.norm2(x)
         ff_output = self.ff(x)
@@ -134,14 +134,14 @@ class TransformerBlock(nn.Module):
 
 class SignalTransformer(models.BaseModel):
     """Transformer-based denoising model for 2-channel signals"""
-    def __init__(self, seq_len=1024, d_model=256, num_heads=8, num_layers=6, d_ff=1024, num_channels=1,num_channels_cond=2, dropout=0.1):
+    def __init__(self, seq_len=1024, d_model=256, num_heads=8, num_layers=6, d_ff=1024, num_channels=1,num_channels_output=2, dropout=0.1):
         super(SignalTransformer, self).__init__()
         self.seq_len = seq_len
         self.d_model = d_model
         
         # Input projection for 2 channels
         self.input_projection = nn.Linear(num_channels, d_model)
-        self.input_projection_cond = nn.Linear(num_channels_cond, d_model)
+        # self.input_projection_cond = nn.Linear(num_channels_cond, d_model)
         
         # Positional encoding for sequence dimension
         self.positional_encoding = nn.Parameter(torch.zeros(1, seq_len, d_model))
@@ -161,7 +161,7 @@ class SignalTransformer(models.BaseModel):
         ])
         
         # Output projection
-        self.output_projection = nn.Linear(d_model, num_channels)
+        self.output_projection = nn.Linear(d_model, num_channels_output)
         
         # Initialize weights
         self._init_weights()
@@ -173,31 +173,31 @@ class SignalTransformer(models.BaseModel):
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
     
-    def forward(self, x, c, t, is_ae=False):
+    def forward(self, x, c=None, t=None, is_ae=True):
         # x shape: (batch_size, 2, seq_len)
         batch_size = x.shape[0]
         
         # Transpose to (batch_size, seq_len, 2) for transformer
         x = x.transpose(1, 2)
-        c = c.transpose(1, 2)
+        # c = c.transpose(1, 2)
         
         # Project input to d_model dimensions
         x = self.input_projection(x)  # (batch_size, seq_len, d_model)
-        c = self.input_projection_cond(c)  # (batch_size, seq_len, d_model)
+        # c = self.input_projection_cond(c)  # (batch_size, seq_len, d_model)
         
         # Add positional encoding
         x = x + self.positional_encoding
         
         # Process time embedding
-        t_emb = self.time_embedding(t)  # (batch_size, d_model)
-        t_emb = self.time_mlp(t_emb)    # (batch_size, d_model)
-        t_emb = t_emb.unsqueeze(1).expand(-1, self.seq_len, -1)  # (batch_size, seq_len, d_model)
+        # t_emb = self.time_embedding(t)  # (batch_size, d_model)
+        # t_emb = self.time_mlp(t_emb)    # (batch_size, d_model)
+        # t_emb = t_emb.unsqueeze(1).expand(-1, self.seq_len, -1)  # (batch_size, seq_len, d_model)
         
         # Add time embedding to input
-        if is_ae:
-            pass
-        else:
-            x = x + t_emb
+        # if is_ae:
+        #     pass
+        # else:
+        #     x = x + t_emb
         
         # Pass through transformer blocks
         for block in self.transformer_blocks:

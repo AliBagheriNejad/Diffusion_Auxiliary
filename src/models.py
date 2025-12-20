@@ -597,19 +597,19 @@ class UNETAE(BaseModel):
 
         i = 1
         self.d1_z = Down(in_channel_z, 64, mp=4) # 1024
-        self.d2_z = Down(64, 64*i) # 256
+        # self.d2_z = Down(64, 64*i) # 256
         self.d2_z_0 = Down(64*i, 128*i) # 256
         self.d3_z = Down(128*i, 256*i) # 64
-        self.d4_z = Down(256*i, 512*i) # 32
+        # self.d4_z = Down(256*i, 512*i) # 32
 
-        self.kz_0 = ConvEmbed(512*i, 1024*i)
-        self.kz = ConvEmbed(1024*i, 1024*i)
+        self.kz_0 = ConvEmbed(256*i, 512*i)
+        self.kz = ConvEmbed(512*i, 512*i)
 
         # self.u4_z = Up(1024,512,ch_d=2)
-        self.u4_z = Up(1024*i,512*i,ch_d=2)
+        # self.u4_z = Up(1024*i,512*i,ch_d=2)
         self.u3_z = Up(512*i,256*i,ch_d=2)
         self.u2_z_0 = Up(256*i,128*i, ch_d=2)
-        self.u2_z = Up(128*i,128, ch_d=2)
+        # self.u2_z = Up(128*i,128, ch_d=2)
         self.u1_z = Up(128,128, us=4,ch_d=2)
 
         self.f1 = ConvEmbed(128,128)
@@ -626,19 +626,19 @@ class UNETAE(BaseModel):
 
         if t is None:
             x1, x1_d = self.d1_z(x)
-            x2, x2_d = self.d2_z(x1_d)
-            x2_0, x2_d_0 = self.d2_z_0(x2_d)
+            # x2, x2_d = self.d2_z(x1_d)
+            x2_0, x2_d_0 = self.d2_z_0(x1_d)
             x3, x3_d = self.d3_z(x2_d_0)
-            x4, x4_d = self.d4_z(x3_d)
+            # x4, x4_d = self.d4_z(x3_d)
 
-            x5 = self.kz_0(x4_d)
+            x5 = self.kz_0(x3_d)
             x5 = self.kz(x5)
 
-            x4_u = self.u4_z(x5, x4)
-            x3_u = self.u3_z(x4_u,x3)
+            # x4_u = self.u4_z(x5, x4)
+            x3_u = self.u3_z(x5,x3)
             x2_u_0 = self.u2_z_0(x3_u,x2_0)
-            x2_u = self.u2_z(x2_u_0,x2)
-            x1_u = self.u1_z(x2_u,x1)
+            # x2_u = self.u2_z(x2_u_0,x2)
+            x1_u = self.u1_z(x2_u_0,x1)
 
             x = self.f1(x1_u)
             x = self.f2(x)
@@ -733,7 +733,7 @@ class FEBased(BaseModel):
 
         # self.bnf = nn.BatchNorm1d(1024)
 
-    def forward(self, x, t):
+    def forward(self, x, t=None):
 
         def with_time(x):
             x = self.pool1(self.dropout1(F.relu(self.bn1(self.conv1(x)))))
@@ -779,4 +779,45 @@ class FEBased(BaseModel):
 
         x = x.reshape(-1,2,1024)
         # x = self.bnf(x)
+        return x
+    
+
+class Encoder(BaseModel):
+    def __init__(self, drop=0.1, input_channels=1):
+        super().__init__()
+
+        self.conv1 = nn.Conv1d(input_channels, 16, kernel_size=128)
+        self.bn1 = nn.BatchNorm1d(16)
+        self.dropout1 = nn.Dropout(drop)
+        self.pool1 = nn.MaxPool1d(kernel_size=4)
+
+        self.conv2 = nn.Conv1d(16, 32, kernel_size=64)
+        self.bn2 = nn.BatchNorm1d(32)
+        self.dropout2 = nn.Dropout(drop)
+        self.pool2 = nn.MaxPool1d(kernel_size=4)
+
+        self.conv3 = nn.Conv1d(32, 64, kernel_size=16)
+        self.bn3 = nn.BatchNorm1d(64)
+        self.dropout3 = nn.Dropout(drop)
+        self.pool3 = nn.MaxPool1d(kernel_size=2)
+
+        self.conv4 = nn.Conv1d(64, 128, kernel_size=3)
+        self.bn4 = nn.BatchNorm1d(128)
+        self.dropout4 = nn.Dropout(drop)
+        self.pool4 = nn.MaxPool1d(kernel_size=2)
+
+        self.conv5 = nn.Conv1d(128, 256, kernel_size=2)
+        self.bn5 = nn.BatchNorm1d(256)
+        self.dropout5 = nn.Dropout(drop)
+
+
+    def forward(self, x):
+        x = self.pool1(self.dropout1(F.relu(self.bn1(self.conv1(x)))))
+        x = self.pool2(self.dropout2(F.relu(self.bn2(self.conv2(x)))))
+        x = self.pool3(self.dropout3(F.relu(self.bn3(self.conv3(x)))))
+        x = self.pool4(self.dropout4(F.relu(self.bn4(self.conv4(x)))))
+        x = self.dropout5(F.relu(self.bn5(self.conv5(x))))
+
+
+        x = torch.flatten(x, 1)
         return x

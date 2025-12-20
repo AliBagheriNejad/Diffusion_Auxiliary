@@ -87,27 +87,31 @@ test_loader_of = utils.make_loader(
 # model_params = {
 #     'seq_len': 1024,
 #     'd_model': 256,
-#     'num_heads': 8, 
-#     'num_layers': 1, # number of transformer blocks
+#     'num_heads': 4, 
+#     'num_layers': 1, 
 #     'd_ff': 256,
-#     'num_channels':1,
-#     'num_channels_cond':2,
+#     'num_channels':2,
+#     'num_channels_output':1,
 # }
 # model = transformer.SignalTransformer(**model_params).to(device)
 
+model_params = {
+    'in_channel_z': 2,
+    'out_channel_z': 1
+} 
+model = models.UNETAE(**model_params).to(device)
+
 # model_params = {
 #     'in_channel_z': 1,
-#     'out_channel_z': 1
+#     'out_channel_z': 1,
+#     'in_channel_x': 2
 # } 
-# model = models.UNETAE(**model_params).to(device)
+# model = models.UNET(**model_params).to(device)
 
-model_params = {
-    'in_channel_z': 1,
-    'out_channel_z': 1,
-    'in_channel_x': 2
-} 
-model = models.UNET(**model_params).to(device)
-
+# model_params = {
+#     'input_channels':2
+# }
+# model = models.Encoder(**model_params)
 
 model.save_path = 'temp/model_weight.pth'
 model.patience = 200
@@ -132,7 +136,7 @@ run_name = 'U_50_16'
 MODE = 'diffusion'
 MODEL_TYPE = 'UNET'
 MODEL = model.to(device)
-EPOCHS = 100
+EPOCHS = 10
 # TRAIN_DATALOADER = train_loader
 TRAIN_DATALOADER = test_loader_of
 # TEST_DATALOADER = test_loader
@@ -250,7 +254,8 @@ for epoch in range(EPOCHS):
 
         
 
-        noise_hat = MODEL(batch_g, batch_x)
+        # noise_hat = MODEL(batch_g, batch_x)
+        noise_hat = MODEL(batch_x)
         # noise_hat = MODEL(batch_z_noisy, t)
         # noise_hat = noise_hat.squeeze()
 
@@ -304,7 +309,8 @@ for epoch in range(EPOCHS):
             batch_g = batch_g.to(device).unsqueeze(1)
             batch_x = batch_x.to(device).permute(0,2,1)
 
-            noise_hat = MODEL(batch_g, batch_x)
+            # noise_hat = MODEL(batch_g, batch_x)
+            noise_hat = MODEL(batch_x)
             # noise_hat = MODEL(batch_z_noisy, t)
             # noise_hat = noise_hat.squeeze()
 

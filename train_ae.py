@@ -83,12 +83,16 @@ test_loader_of = utils.make_loader(
 # }
 # model = transformer.SignalTransformer(**model_params)
 
-model_params = {
-    'in_channel_z': 2,
-    'out_channel_z': 1
-} 
-model = models.UNETAE(**model_params)
+# model_params = {
+#     'in_channel_z': 2,
+#     'out_channel_z': 1
+# } 
+# model = models.UNETAE(**model_params)
 
+model_params = {
+    'input_channels': 2
+}
+model = models.FEBased(**model_params)
 
 # weight_dir = r'F:/thesis/Articles/2nd/diffusion/mlruns/849254562878161049/8d74a03849d84a058eec736bde2bb91e/artifacts/artifacts/model_weight.pth'
 # model = torch.load(weight_dir, weights_only=False)
